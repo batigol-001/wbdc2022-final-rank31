@@ -1,0 +1,47 @@
+
+team-062
+
+所属实例	tione-wxdsj
+用途描述	wdbc
+登录用户名	1.00026E+11
+登录密码	eyJhbGciOiJSUzI1NiIsImtpZCI6IkI2WUg6RExaUTpWTVM1OldaQUk6NFpBUTpUSVdROkFURFg6SUlOSjpYRkVVOkk3Qk86S0ZRNjpCRExSIn0.eyJvd25lclVpbiI6IjEwMDAxOTg3MjIyMSIsIm9wZXJhdG9yVWluIjoiMTAwMDI2Mjc2NDc4IiwidG9rZW5JZCI6ImNhdnVnOHIzazY1ZG1pOG9oZ2pnIiwiZXhwIjoxOTcyMTAzOTcxLCJuYmYiOjE2NTY3NDM5NzEsImlhdCI6MTY1Njc0Mzk3MX0.oLFtx56CU8PDrylDKnMu-nd78c98EYFipgmk4OjhkC2j9bQCacfE0Ne_6SfXmFERH2GJbljBeuB7qLbha1DGwAP1bO2YGRhWjnuMNya2zIvjP43qBKkVgCMuuh8h8YVVsfcWMI-gbXPqxXHcoktHuLOML-FglGQxq8WOD31qZ7otvjcEzG1UToT7bAjR0XKbrt22kfcNwdxj7ty-gGZIE_Ze2DjBgK0eO8I__0_kdIP-I26Tg4J9B9X5thRqcIu8ZOZgJGaHqt9xLM7-ADVNHiHuvaoLGGCEpOQWuQ20OE3t5t9PTP0w0_PTKZ98_VwTLgz9ui36klPDARWd3FHfMA
+登录指令	docker login tione-wxdsj.tencentcloudcr.com --username 100026276478 --password eyJhbGciOiJSUzI1NiIsImtpZCI6IkI2WUg6RExaUTpWTVM1OldaQUk6NFpBUTpUSVdROkFURFg6SUlOSjpYRkVVOkk3Qk86S0ZRNjpCRExSIn0.eyJvd25lclVpbiI6IjEwMDAxOTg3MjIyMSIsIm9wZXJhdG9yVWluIjoiMTAwMDI2Mjc2NDc4IiwidG9rZW5JZCI6ImNhdnVnOHIzazY1ZG1pOG9oZ2pnIiwiZXhwIjoxOTcyMTAzOTcxLCJuYmYiOjE2NTY3NDM5NzEsImlhdCI6MTY1Njc0Mzk3MX0.oLFtx56CU8PDrylDKnMu-nd78c98EYFipgmk4OjhkC2j9bQCacfE0Ne_6SfXmFERH2GJbljBeuB7qLbha1DGwAP1bO2YGRhWjnuMNya2zIvjP43qBKkVgCMuuh8h8YVVsfcWMI-gbXPqxXHcoktHuLOML-FglGQxq8WOD31qZ7otvjcEzG1UToT7bAjR0XKbrt22kfcNwdxj7ty-gGZIE_Ze2DjBgK0eO8I__0_kdIP-I26Tg4J9B9X5thRqcIu8ZOZgJGaHqt9xLM7-ADVNHiHuvaoLGGCEpOQWuQ20OE3t5t9PTP0w0_PTKZ98_VwTLgz9ui36klPDARWd3FHfMA
+
+# 登录
+sudo docker login tione-wxdsj.tencentcloudcr.com --username 100026276478 --password eyJhbGciOiJSUzI1NiIsImtpZCI6IkI2WUg6RExaUTpWTVM1OldaQUk6NFpBUTpUSVdROkFURFg6SUlOSjpYRkVVOkk3Qk86S0ZRNjpCRExSIn0.eyJvd25lclVpbiI6IjEwMDAxOTg3MjIyMSIsIm9wZXJhdG9yVWluIjoiMTAwMDI2Mjc2NDc4IiwidG9rZW5JZCI6ImNhdnVnOHIzazY1ZG1pOG9oZ2pnIiwiZXhwIjoxOTcyMTAzOTcxLCJuYmYiOjE2NTY3NDM5NzEsImlhdCI6MTY1Njc0Mzk3MX0.oLFtx56CU8PDrylDKnMu-nd78c98EYFipgmk4OjhkC2j9bQCacfE0Ne_6SfXmFERH2GJbljBeuB7qLbha1DGwAP1bO2YGRhWjnuMNya2zIvjP43qBKkVgCMuuh8h8YVVsfcWMI-gbXPqxXHcoktHuLOML-FglGQxq8WOD31qZ7otvjcEzG1UToT7bAjR0XKbrt22kfcNwdxj7ty-gGZIE_Ze2DjBgK0eO8I__0_kdIP-I26Tg4J9B9X5thRqcIu8ZOZgJGaHqt9xLM7-ADVNHiHuvaoLGGCEpOQWuQ20OE3t5t9PTP0w0_PTKZ98_VwTLgz9ui36klPDARWd3FHfMA
+
+
+注1：xx 为你的队伍 ID，后面的 challenge:v1.0 可自行命名。
+注2：请勿将训练数据打包进 docker 容器中，这样会导致容器太大。在推理测试的时候，测试数据会自动挂载到 /opt/ml/input/ 目录下。
+注3：请确保入口工作目录（WORKDIR）为 /opt/ml/wxcode
+# build
+sudo docker build -t tione-wxdsj.tencentcloudcr.com/team-062/challenge:test_1.1 .
+
+
+线下验证：
+sudo docker run -v  /home/tione/notebook/demo_data/:/opt/ml/input/data/ -it tione-wxdsj.tencentcloudcr.com/team-062/challenge:test_1.1
+
+
+sudo docker push tione-wxdsj.tencentcloudcr.com/team-062/challenge:test_1.1
+
+
+### 复赛预热阶段
+
+复赛训练数据不可见。
+提供 100条 demo 数据于 `demo_data/` 文件夹下，以方便选手熟悉数据组织形式。
+
+### 复赛正式阶段
+
+复赛的训练数据挂载于 notebook 目录下的 `data/` 文件夹。分为 labeled 与 unlabeled 两部分。
+
+### 复赛测试数据
+
+测试数据对选手不可见。在提交 Docker 后，数据会被挂载于：
+
+元信息：/opt/ml/input/data/annotations/test.json
+视频帧：/opt/ml/input/data/zip_frames/test/
+
+选手需要将结果输出到：/opt/ml/output/result.csv 位置
+
+
+ python inference.py --test_annotation '/home/tione/notebook/demo_data/annotations/semi_demo.json' --test_zip_frames '/home/tione/notebook/demo_data/zip_frames/demo/'

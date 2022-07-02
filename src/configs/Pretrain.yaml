@@ -1,0 +1,33 @@
+# pretrain config
+
+version: '1.0'
+# bert_config: 'configs/config_bert.json'
+
+# model
+embed_dim: 256 # 动量嵌入低维
+max_frames: 32
+frame_embedding_size: 768
+
+temp: 0.07
+mlm_probability: 0.15
+queue_size: 65536
+momentum: 0.995
+alpha: 0.4
+cross_layers_num: 3
+
+# train
+train_batch_size: 1
+val_batch_size: 256
+max_epochs: 10
+print_steps: 100
+warmup_ratio: 0.06
+lr: 0.0001
+other_lr: 0.0005
+weight_decay: 0.01
+adam_epsilon: 0.000001
+max_grad_norm: 5
+
+other_lr_layers: ["itm_head", "mlm_head", "video_encoder", "cross_layers", "vision_proj", "text_proj"]
+
+
+

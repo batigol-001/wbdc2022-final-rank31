@@ -1,0 +1,36 @@
+#finetune config
+
+version: '1.0'
+#bert_config: 'configs/config_bert.json'
+
+# model
+distrill: False
+max_frames: 8
+frame_embedding_size: 768
+
+temp: 0.07
+mlm_probability: 0.15
+queue_size: 65536
+momentum: 0.995
+alpha: 0.4
+cross_layers_num: 3
+
+# train
+train_batch_size: 1
+val_batch_size: 256
+test_batch_size: 1
+max_epochs: 4
+print_steps: 100
+warmup_ratio: 0.1
+lr: 0.00001
+other_lr: 0.0001
+weight_decay: 0.01
+adam_epsilon: 0.000001
+max_grad_norm: 5
+
+other_lr_layers: ["linear", "video_encoder", "cross_layers"]
+
+# file
+resume: ''
+pretrain_file: ''
+
