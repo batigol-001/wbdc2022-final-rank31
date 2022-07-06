@@ -1,5 +1,7 @@
+
 import math
 import numpy as np
+from functools import partial
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,6 +13,7 @@ from third_party.masklm import MaskLM, MaskVideo, ShuffleVideo
 
 from third_party.lxrt import LXRTXLayer, BertLayer, BertLayerNorm
 from third_party.swin import swin_tiny
+from third_party.vit import vit
 
 # 双流模型
 class TwoStreamModel(nn.Module):
@@ -35,12 +38,14 @@ class TwoStreamModel(nn.Module):
         self.video_encoder = swin_tiny(args.swin_pretrained_path)
 
 
+
+
         self.cross_layers = nn.ModuleList(
             [LXRTXLayer(bert_cfg) for _ in range(self.cross_layers_num)]
         )
 
         # 温度参数
-        self.temp = nn.Parameter(torch.ones([]) * temp)
+        # self.temp = nn.Parameter(torch.ones([]) * temp)
 
         #  分类头
         self.cls_linear = torch.nn.Linear(bert_hidden_size * 2, self.num_classes)
@@ -65,12 +70,12 @@ class TwoStreamModel(nn.Module):
                                 ]
             self.copy_params()
 
-    def forward(self, inputs, alpha=0, inference=False):
+    def forward(self, text_input_ids, text_mask, video_feature, video_mask, labels=None, alpha=0):
 
-        text_input_ids = inputs['text_input_ids']
-        text_mask = inputs['text_attention_mask']
-        video_feature = inputs["frame_input"]
-        video_mask = inputs['frame_mask']
+        # text_input_ids = inputs['text_input_ids']
+        # text_mask = inputs['text_attention_mask']
+        # video_feature = inputs["frame_input"]
+        # video_mask = inputs['frame_mask']
 
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
         video_embeds = self.video_encoder(video_feature)
@@ -89,10 +94,10 @@ class TwoStreamModel(nn.Module):
         # concatenate_pooling = nn.Dropout(0.2)(text_outputs[:, 0, :])
         preds = self.cls_linear(concatenate_pooling)
 
-        if inference:
+        if labels is None:
             return F.log_softmax(preds, dim=-1)
         else:
-            labels = inputs["label"].squeeze(dim=1)
+            labels = labels.squeeze(dim=1)
             loss = F.cross_entropy(preds, labels)
 
             if self.is_distrill:
@@ -146,57 +151,6 @@ class TwoStreamModel(nn.Module):
             for param, param_m in zip(model_pair[0].parameters(), model_pair[1].parameters()):
                 param_m.data = param_m.data * self.momentum + param.data * (1. - self.momentum)
 
-    @torch.no_grad()
-    def _dequeue_and_enqueue(self, video_feat, text_feat):
-        # gather keys before updating queue
-        # video_feats = concat_all_gather(video_feat)
-        # text_feats = concat_all_gather(text_feat)
-
-        video_feats = video_feat
-        text_feats = text_feat
-        batch_size = video_feats.shape[0]
-
-        ptr = int(self.queue_ptr)
-        assert self.queue_size % batch_size == 0  # for simplicity
-
-        # replace the keys at ptr (dequeue and enqueue)
-        self.video_queue[:, ptr:ptr + batch_size] = video_feats.T
-        self.text_queue[:, ptr:ptr + batch_size] = text_feats.T
-        ptr = (ptr + batch_size) % self.queue_size  # move pointer
-
-        self.queue_ptr[0] = ptr
-
-
-
-class VisualFeatEncoder(nn.Module):
-    def __init__(self, config, feat_dim):
-        super().__init__()
-
-        # Object feature encoding
-        self.visn_fc = nn.Linear(feat_dim, config.hidden_size)
-        self.visn_layer_norm = BertLayerNorm(config.hidden_size, eps=1e-12)
-        self.dropout = nn.Dropout(0.2)
-
-    def forward(self, visn_input):
-        x = self.visn_fc(visn_input)
-        x = self.visn_layer_norm(x)
-        output = self.dropout(x)
-        return output
-
-
-@torch.no_grad()
-def concat_all_gather(tensor):
-    """
-    Performs all_gather operation on the provided tensors.
-    *** Warning ***: torch.distributed.all_gather has no gradient.
-    """
-    tensors_gather = [torch.ones_like(tensor)
-                      for _ in range(torch.distributed.get_world_size())]
-    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
-
-    output = torch.cat(tensors_gather, dim=0)
-    return output
-
 
 @torch.no_grad()
 def get_encoder_attention_mask(mask):
@@ -204,4 +158,5 @@ def get_encoder_attention_mask(mask):
     encoder_mask = (1.0 - encoder_mask) * -10000.0
 
     return encoder_mask
+
 

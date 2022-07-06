@@ -40,8 +40,8 @@ class TwoStreamModel(nn.Module):
         )
 
         # 温度参数
-        self.temp = nn.Parameter(torch.ones([]) * temp)
 
+        self.temp = torch.tensor(temp)
 
         self.vision_proj = nn.Linear(bert_hidden_size, embed_dim)
         self.text_proj = nn.Linear(bert_hidden_size, embed_dim)
@@ -81,12 +81,12 @@ class TwoStreamModel(nn.Module):
         self.text_queue = nn.functional.normalize(self.text_queue, dim=0)
 
 
-    def forward(self, inputs, alpha=0):
+    def forward(self,  text_input_ids, text_mask, video_feature, video_mask, alpha=0):
 
-        text_input_ids = inputs['text_input_ids']
-        text_mask = inputs['text_attention_mask']
-        video_feature = inputs["frame_input"]
-        video_mask = inputs['frame_mask']
+        # text_input_ids = inputs['text_input_ids']
+        # text_mask = inputs['text_attention_mask']
+        # video_feature = inputs["frame_input"]
+        # video_mask = inputs['frame_mask']
 
         with torch.no_grad():
             self.temp.clamp_(0.001, 0.5)
@@ -115,11 +115,14 @@ class TwoStreamModel(nn.Module):
             sim_i2t_m = video_feat_m @ text_feat_all / self.temp
             sim_t2i_m = text_feat_m @ video_feat_all / self.temp
 
+
+
             sim_targets = torch.zeros(sim_i2t_m.size()).to(video_feature.device)
             sim_targets.fill_diagonal_(1)
 
             sim_i2t_targets = alpha * F.softmax(sim_i2t_m, dim=1) + (1 - alpha) * sim_targets
             sim_t2i_targets = alpha * F.softmax(sim_t2i_m, dim=1) + (1 - alpha) * sim_targets
+
 
         sim_i2t = video_feat @ text_feat_all / self.temp
         sim_t2i = text_feat @ video_feat_all / self.temp

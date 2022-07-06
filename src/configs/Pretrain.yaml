@@ -16,7 +16,7 @@ alpha: 0.4
 cross_layers_num: 3
 
 # train
-train_batch_size: 1
+train_batch_size: 16
 val_batch_size: 256
 max_epochs: 10
 print_steps: 100

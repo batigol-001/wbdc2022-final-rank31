@@ -1,5 +1,6 @@
 
 team-062
+wxchallenge_team-062_qM0J8QCC
 
 所属实例	tione-wxdsj
 用途描述	wdbc
@@ -15,14 +16,14 @@ sudo docker login tione-wxdsj.tencentcloudcr.com --username 100026276478 --passw
 注2：请勿将训练数据打包进 docker 容器中，这样会导致容器太大。在推理测试的时候，测试数据会自动挂载到 /opt/ml/input/ 目录下。
 注3：请确保入口工作目录（WORKDIR）为 /opt/ml/wxcode
 # build
-sudo docker build -t tione-wxdsj.tencentcloudcr.com/team-062/challenge:test_1.1 .
+sudo docker build -t tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:gpu_test_1.0 .
 
 
 线下验证：
-sudo docker run -v  /home/tione/notebook/demo_data/:/opt/ml/input/data/ -it tione-wxdsj.tencentcloudcr.com/team-062/challenge:test_1.1
+sudo docker run -it tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:gpu_test_1.0
 
 
-sudo docker push tione-wxdsj.tencentcloudcr.com/team-062/challenge:test_1.1
+sudo docker push tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:test_1.0
 
 
 ### 复赛预热阶段
@@ -44,4 +45,4 @@ sudo docker push tione-wxdsj.tencentcloudcr.com/team-062/challenge:test_1.1
 选手需要将结果输出到：/opt/ml/output/result.csv 位置
 
 
- python inference.py --test_annotation '/home/tione/notebook/demo_data/annotations/semi_demo.json' --test_zip_frames '/home/tione/notebook/demo_data/zip_frames/demo/'
+ python inference.py --test_annotation '/home/tione/notebook/demo_data/annotations/semi_demo.json' --test_zip_frames '/home/tione/notebook/demo_data/zip_frames/demo/' --test_output_csv './result.csv'

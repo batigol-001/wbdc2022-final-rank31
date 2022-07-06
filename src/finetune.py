@@ -29,9 +29,13 @@ def validate(model, val_dataloader):
     losses = []
     with torch.no_grad():
         for batch in val_dataloader:
-            batch = {key: value.cuda() for key, value in batch.items()}
-            loss, _, pred_label_id, label = model(batch, 0.4)
-            # loss = loss.mean()
+            # batch = {key: value.cuda() for key, value in batch.items()}
+            text_input_ids = batch['text_input_ids'].cuda()
+            text_mask = batch['text_attention_mask'].cuda()
+            video_feature = batch["frame_input"].cuda()
+            video_mask = batch['frame_mask'].cuda()
+            loss, _, pred_label_id, label = model(text_input_ids, text_mask, video_feature, video_mask, batch["label"].cuda(), 0.4)
+            loss = loss.mean()
             predictions.extend(pred_label_id.detach().cpu().numpy())
             labels.extend(label.detach().cpu().numpy())
             losses.append(loss.detach().cpu().numpy())
@@ -132,14 +136,23 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
 
         for i, batch in enumerate(train_dataloader):
             model.train()
-            batch = {key: value.to(args.device) for key, value in batch.items()}
-
+            #batch = {key: value.to(args.device) for key, value in batch.items()}
+            text_input_ids = batch['text_input_ids'].to(args.device)
+            text_mask = batch['text_attention_mask'].to(args.device)
+            video_feature = batch["frame_input"].to(args.device)
+            video_mask = batch['frame_mask'].to(args.device)
+            labels = batch["label"].to(args.device)
+            print(text_input_ids.shape)
+            print(text_mask.shape)
+            print(video_feature.shape)
+            print(video_mask.shape)
             if epoch > 1:
                 alpha = config['alpha']
             else:
                 alpha = config['alpha'] * min(1, i / len(train_dataloader))
 
-            loss,accuracy, _, _ = model(batch, alpha)
+            loss,accuracy, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, labels, alpha)
+            loss = loss.mean()
             accuracy = accuracy.mean()
 
             loss.backward()
@@ -147,8 +160,8 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
             if args.use_adv == 1:
                 # 对抗训练
                 fgm.attack()  # 在embedding上添加对抗扰动
-                loss_adv,_, _, _ = model(batch, alpha)  # 这部分一定要注意model该传入的参数
-
+                loss_adv,_, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, alpha)  # 这部分一定要注意model该传入的参数
+                loss_adv = loss_adv.mean()
                 loss_adv.backward()# 反向传播，并在正常的grad基础上，累加对抗训练的梯度
                 torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
 
@@ -161,7 +174,8 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
                         model.zero_grad()
                     else:
                         pgd.restore_grad()
-                    loss_adv,_, _, _ = model(batch, alpha)
+                    loss_adv,_, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, alpha)
+                    loss_adv = loss_adv.mean()
                     loss_adv.backward()# 反向传播，并在正常的grad基础上，累加对抗训练的梯度
                     torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
                 pgd.restore()  # 恢复embedding参数

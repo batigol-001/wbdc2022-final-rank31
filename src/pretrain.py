@@ -2,19 +2,26 @@ import os
 import sys
 project_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))#print(path)
 sys.path.append(project_path)
+
 # import ruamel_yaml as yaml
 import yaml
 import time
 import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import RandomSampler, SequentialSampler, DataLoader, ConcatDataset
 from transformers import get_linear_schedule_with_warmup
 from functools import partial
 from configs.config import parse_args
 from utlils.util import setup_device, setup_seed, build_optimizer, setup_logging
+from utlils.util import  init_distributed_mode, get_rank
 from dataset.data_helper import MultiModalDataset
 from models.model_pretrain import TwoStreamModel
 
 import gc
+
+import warnings
+warnings.filterwarnings('ignore')
 
 gc.enable()
 
@@ -28,8 +35,14 @@ def validate(model, val_dataloader):
 
     with torch.no_grad():
         for batch in val_dataloader:
-            batch = {key: value.cuda() for key, value in batch.items()}
-            loss, (mlm_loss,  ita_loss, itm_loss) = model(batch, alpha=0.4)
+            # batch = {key: value.cuda() for key, value in batch.items()}
+            text_input_ids = batch['text_input_ids'].cuda()
+            text_mask = batch['text_attention_mask'].cuda()
+            video_feature = batch["frame_input"].cuda()
+            video_mask = batch['frame_mask'].cuda()
+
+            loss, _, pred_label_id, label = model(text_input_ids, text_mask, video_feature, video_mask, 0.4)
+
             loss = loss.mean()
             mlm_loss = mlm_loss.mean()
             ita_loss = ita_loss.mean()
@@ -66,6 +79,7 @@ def create_pretrain_dataloaders(args,  config, annotations, zip_frames, val_size
         size = len(dataset)
         train_dataset, val_dataset = torch.utils.data.random_split(dataset, [size - val_size, val_size],
                                                                    generator=torch.Generator().manual_seed(args.seed))
+
         train_sampler = RandomSampler(train_dataset)
         val_sampler = SequentialSampler(val_dataset)
         train_dataloader = dataloader_class(train_dataset,
@@ -90,7 +104,6 @@ def train(args, config):
     #  load data
     # annotations = [args.unlabeled_annotation, args.train_annotation]
     # zip_feats = [args.unlabeled_zip_frames, args.train_zip_frames]
-
 
     annotations = [args.train_annotation]
     zip_feats = [args.train_zip_frames]
@@ -128,6 +141,8 @@ def train(args, config):
 
     if args.n_gpu > 1:
         model = torch.nn.parallel.DataParallel(model)
+
+
     best_loss = 1000
     for epoch in range(1, epochs+1):
         start_time = time.time()
@@ -139,14 +154,19 @@ def train(args, config):
 
         for i, batch in enumerate(train_dataloader):
             model.train()
-            batch = {key: value.to(args.device) for key, value in batch.items()}
+            # batch = {key: value.to(args.device) for key, value in batch.items()}
+            text_input_ids = batch['text_input_ids'].to(args.device)
+            text_mask = batch['text_attention_mask'].to(args.device)
+            video_feature = batch["frame_input"].to(args.device)
+            video_mask = batch['frame_mask'].to(args.device)
+
 
             if epoch > 1:
                 alpha = config['alpha']
             else:
                 alpha =config['alpha'] * min(1, i / len(train_dataloader))
 
-            loss, (mlm_loss,  ita_loss, itm_loss) = model(batch, alpha)
+            loss, (mlm_loss,  ita_loss, itm_loss) = model(text_input_ids, text_mask, video_feature, video_mask, alpha)
             loss = loss.mean()
             loss.backward()
 

@@ -6,5 +6,6 @@ ADD . /opt/ml/wxcode
 
 
 RUN pip install -r requirements.txt -i https://mirrors.cloud.tencent.com/pypi/simple
+RUN pip install nvidia-tensorrt -U --index-url https://pypi.ngc.nvidia.com
 
 CMD sh -c "sh start.sh"

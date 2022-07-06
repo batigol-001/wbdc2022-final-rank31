@@ -1,5 +1,5 @@
 import argparse
-from utlils.util import setup_logging
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="two steam model for Weixin Challenge 2022")
@@ -30,7 +30,7 @@ def parse_args():
     parser.add_argument('--n_splits', default=0, type=float, help='split 10')
     parser.add_argument('--prefetch', default=4, type=int, help="use for training duration per worker")
     parser.add_argument('--num_workers', default=2, type=int, help="num_workers for dataloaders")
-
+    parser.add_argument("--local_rank", default=-1)
     # ========================== tricks =============================
     parser.add_argument('--fp16', type=bool, default=False)
     parser.add_argument('--use_ema', type=bool, default=True)
