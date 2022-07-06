@@ -221,7 +221,7 @@ def main():
     config = yaml.load(open("configs/Pretrain.yaml", 'r'), Loader=yaml.Loader)
     config["lr"] = float(config["lr"])
     config["other_lr"] = float(config["other_lr"])
-    
+
     version = str(config["version"])
     log_path = os.path.join(args.log_path, "pretrain")
     filename = os.path.join(log_path, f"pretrain_{version}.log")
