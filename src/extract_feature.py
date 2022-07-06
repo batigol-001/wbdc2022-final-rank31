@@ -11,6 +11,7 @@ from torch.nn.parallel import DataParallel
 from torchvision.transforms import Compose, Resize, CenterCrop, Normalize, ToTensor
 
 from third_party import swin
+from configs.config import parse_args
 
 
 class RawFrameDataset(Dataset):
@@ -64,16 +65,6 @@ class RawFrameDataset(Dataset):
         return dict(img=img_tensor, num_frames=num_frames)
 
 
-def parse_args():
-    parser = argparse.ArgumentParser("Visual feature extraction")
-    parser.add_argument('--zip_frame_dir', type=str, default='data/zip_frames/demo/')
-    parser.add_argument('--ann_path', type=str, default='data/annotations/semi_demo.json')
-    parser.add_argument('--swin_pretrained', type=str, default='opensource_models/swin_tiny_patch4_window7_224.pth')
-    parser.add_argument('--output_path', type=str, default='data/zip_feats/labeled.zip')
-    args = parser.parse_args()
-    return args
-
-
 def build_model(swin_pretrained) -> torch.nn.Module:
     """ Load the pretrianed feature extractor (Swin-T here). """
     if not os.path.isfile(swin_pretrained):
@@ -88,15 +79,16 @@ def build_model(swin_pretrained) -> torch.nn.Module:
 
 def main():
     args = parse_args()
+
     model = build_model(args.swin_pretrained)
-
-    dataset = RawFrameDataset(args.ann_path, args.zip_frame_dir)
+    dataset = RawFrameDataset(args.train_annotation, args.train_zip_frames, max_video_frames=8)
     # batch-size == 8 is fine for V100 GPU, please consider use smaller batch-size if OOM issue occurs.
-    dataloader = DataLoader(dataset, batch_size=8, num_workers=0, shuffle=False, pin_memory=True, drop_last=False)
+    dataloader = DataLoader(dataset, batch_size=8, num_workers=24, shuffle=False, pin_memory=True, drop_last=False)
 
-    assert not os.path.isfile(args.output_path), f"{args.output_path} already exists. " \
+    assert not os.path.isfile(args.train_feature_output_path), f"{args.train_feature_output_path} already exists. " \
                                                   "If you want to override it, please manually delete this file."
-    output_handler = zipfile.ZipFile(args.output_path, 'w', compression=zipfile.ZIP_STORED)
+
+    output_handler = zipfile.ZipFile(args.train_feature_output_path, 'w', compression=zipfile.ZIP_STORED)
 
     with torch.no_grad():
         cur = 0

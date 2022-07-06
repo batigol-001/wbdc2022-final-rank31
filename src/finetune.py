@@ -142,10 +142,7 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
             video_feature = batch["frame_input"].to(args.device)
             video_mask = batch['frame_mask'].to(args.device)
             labels = batch["label"].to(args.device)
-            print(text_input_ids.shape)
-            print(text_mask.shape)
-            print(video_feature.shape)
-            print(video_mask.shape)
+
             if epoch > 1:
                 alpha = config['alpha']
             else:
@@ -202,9 +199,11 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
 
             if val_dataloader is not None:
                 if epoch >= 3 and print_step % 500 == 0:
+                    s_time = time.time()
                     loss, results, predictions, labels = validate(model, val_dataloader)
                     results = {k: round(v, 4) for k, v in results.items()}
-                    args.logger.info(f"Eval epoch {epoch} step [{print_step} / {setps_per_epoch}]  : loss {loss:.3f}, {results}")
+                    args.logger.info(f"Eval epoch {epoch} step [{print_step} / {setps_per_epoch}]  : loss {loss:.3f}, {results},"
+                                     f"cost time {time.time() - s_time} ")
                     score = results["mean_f1"]
                     if score > best_score:
                         best_score = score
@@ -233,9 +232,10 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
             ema.apply_shadow()
 
         if val_dataloader is not None:
+            s_time = time.time()
             loss, results, predictions, labels = validate(model, val_dataloader)
             results = {k: round(v, 4) for k, v in results.items()}
-            args.logger.info(f"Eval epoch {epoch} : loss {loss:.3f}, {results}")
+            args.logger.info(f"Eval epoch {epoch} : loss {loss:.3f}, {results} , cost time {time.time() - s_time} ")
             score = results["mean_f1"]
             if score > best_score:
                 best_score = score
@@ -269,6 +269,8 @@ def main():
     args = parse_args()
 
     config = yaml.load(open("configs/Finetune.yaml", 'r'), Loader=yaml.Loader)
+    config["lr"] = float(config["lr"])
+    config["other_lr"] = float(config["other_lr"])
 
     version = str(config["version"])
     log_path = os.path.join(args.log_path, "finetune")

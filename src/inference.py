@@ -18,9 +18,14 @@ def inference():
     args = parse_args()
     config = yaml.load(open("configs/Finetune.yaml", 'r'), Loader=yaml.Loader)
 
-    # args.tf_idf_model = load_train_model(args.tf_idf_file)
+
     # 1. load data
     dataset = MultiModalDataset(args, config, args.test_annotation, args.test_zip_frames, data_index=None, test_mode=True)
+
+    # # test
+    #data_index = range(25000)
+    #dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, data_index=data_index, test_mode=True)
+
     print("数据量:", len(dataset))
     batch_size = config["test_batch_size"]
     print("batch_size", batch_size)
@@ -30,7 +35,8 @@ def inference():
                             sampler=sampler,
                             drop_last=False,
                             pin_memory=True,
-                            num_workers=args.num_workers)
+                            prefetch_factor=8,
+                            num_workers=4)
 
     # 2. load model
     ckpt_file = args.ckpt_file

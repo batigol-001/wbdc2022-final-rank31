@@ -1,0 +1,44 @@
+*************20220706*************
+# 时间记录
+# finetune  训练100step 100s
+ max_frames = 8
+ bert_seq_length = 32
+ train_batch_size = 32
+
+# 1、数据量20000，推理时间251s
+## config配置建议
+prefetch = 4
+num_workers= 2
+val_batch_size = 256
+
+# 2、数据量20000，推理时间190s, 3轮迭代中OOM
+prefetch = 8
+num_workers= 4
+val_batch_size = 256
+
+# 3、数据量20000，内存OOM
+prefetch = 16
+num_workers= 8
+val_batch_size = 256
+
+# 4、 测试 inference, 2轮迭代的，线下6741
+## 1. 数据量: 25000
+    batch_size 1024
+    prefetch = 16
+    num_workers= 8
+    OOM
+## 2、 batch_size 1024/ 512
+    prefetch = 16
+    num_workers= 8
+    显存不够
+
+## 3、 不算加载模型写文件 238s, 总计248s
+    batch_size 256
+    prefetch = 16
+    num_workers= 4
+## 4.不算加载模型写文件 238s, 总计254s
+    batch_size 256
+    prefetch = 8
+    num_workers= 4
+
+

@@ -43,21 +43,14 @@ def setup_seed(args):
 
 
 def init_distributed_mode(args):
-    if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
-        args.rank = int(os.environ["RANK"])
-        args.world_size = int(os.environ['WORLD_SIZE'])
-        args.gpu = int(os.environ['LOCAL_RANK'])
-    elif 'SLURM_PROCID' in os.environ:
-        args.rank = int(os.environ['SLURM_PROCID'])
-        args.gpu = args.rank % torch.cuda.device_count()
-    else:
-        print('Not using distributed mode')
-        args.distributed = False
-        return
 
     args.distributed = True
+    args.rank = int(os.environ["RANK"])
+    args.local_rank = int(os.environ["LOCAL_RANK"])
+    torch.cuda.set_device(args.rank % torch.cuda.device_count())
 
-    torch.cuda.set_device(args.gpu)
+
+    torch.cuda.set_device(args.local_rank)
     args.dist_backend = 'nccl'
     print('| distributed init (rank {}): {}'.format(
         args.rank, args.dist_url), flush=True)
@@ -101,7 +94,8 @@ def get_world_size():
         return 1
     return dist.get_world_size()
 
-
+def is_main_process():
+    return get_rank() == 0
 # def setup_logging(args):
 
 #     logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s',
