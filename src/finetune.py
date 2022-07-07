@@ -205,7 +205,7 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
                     score = results["mean_f1"]
                     if score > best_score:
                         best_score = score
-                        save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_best_score.bin'
+                        save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_best_score_{best_score}.bin'
                         model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
                         torch.save({"model_state_dict": model_save}, save_file)
                         args.logger.info(f"save mode to file {save_file}")
@@ -237,7 +237,7 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
             score = results["mean_f1"]
             if score > best_score:
                 best_score = score
-                save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_best_score.bin'
+                save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_best_score_{best_score}.bin'
                 model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
                 torch.save({"model_state_dict": model_save}, save_file)
                 args.logger.info(f"save mode to file {save_file}")
