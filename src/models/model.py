@@ -37,9 +37,6 @@ class TwoStreamModel(nn.Module):
 
         self.video_encoder = swin_tiny(args.swin_pretrained_path)
 
-
-
-
         self.cross_layers = nn.ModuleList(
             [LXRTXLayer(bert_cfg) for _ in range(self.cross_layers_num)]
         )

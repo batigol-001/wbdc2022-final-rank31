@@ -102,11 +102,11 @@ def create_pretrain_dataloaders(args,  config, annotations, zip_frames, val_size
 
 def train(args, config):
     #  load data
-    # annotations = [args.unlabeled_annotation, args.train_annotation]
-    # zip_feats = [args.unlabeled_zip_frames, args.train_zip_frames]
+    annotations = [args.unlabeled_annotation, args.train_annotation]
+    zip_feats = [args.unlabeled_zip_frames, args.train_zip_frames]
 
-    annotations = [args.train_annotation]
-    zip_feats = [args.train_zip_frames]
+    # annotations = [args.train_annotation]
+    # zip_feats = [args.train_zip_frames]
 
     train_dataloader, val_dataloader = create_pretrain_dataloaders(args, config, annotations, zip_feats, val_size=None)
 

@@ -130,7 +130,6 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
     for epoch in range(start_epoch, epochs+1):
         start_time = time.time()
         print_loss = 0.0
-        ema_loss = 0.0
         ema_acc = 0.0
         print_step = 0
 
@@ -185,8 +184,7 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
 
             print_step += 1
             print_loss += loss.item()
-            ema_loss = 0.9 * ema_loss + 0.1 * loss
-            ema_acc = 0.9 * ema_acc + 0.1 * accuracy
+            ema_acc = 0.9 * ema_acc + 0.1 * accuracy.item()
 
             if print_step % config["print_steps"] == 0:
                 lr = optimizer.param_groups[0]['lr']

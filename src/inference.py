@@ -35,8 +35,8 @@ def inference():
                             sampler=sampler,
                             drop_last=False,
                             pin_memory=True,
-                            prefetch_factor=4,
-                            num_workers=2)
+                            prefetch_factor=8,
+                            num_workers=4)
 
     # 2. load model
     ckpt_file = args.ckpt_file

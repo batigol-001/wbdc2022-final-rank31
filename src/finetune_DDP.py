@@ -1,3 +1,4 @@
+
 import os
 import sys
 project_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))#print(path)
@@ -51,15 +52,15 @@ def validate(model, val_dataloader):
 
 def print_info(args):
     if args.fp16:
-        args.logger.info(" FP16 Starting")
+        print(" FP16 Starting")
 
     if args.use_ema:
-        args.logger.info(" EMA Starting")
+        print(" EMA Starting")
 
     if args.use_adv == 1:
-        args.logger.info("FGM Starting")
+        print("FGM Starting")
     elif args.use_adv == 2:
-        args.logger.info("PGD Starting")
+        print("PGD Starting")
 
 
 from torch.utils.data import RandomSampler, SequentialSampler, DataLoader, ConcatDataset
@@ -122,8 +123,8 @@ def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, va
 
     args.device = torch.device("cuda", local_rank)
     torch.cuda.set_device(local_rank)
-
-    args.logger.info(f"[init] == local rank: {local_rank}, global rank: {args.global_rank} ==")
+    if args.global_rank == 0:
+        print(f"[init] == local rank: {local_rank}, global rank: {args.global_rank} ==")    
 
     # fix the seed for reproducibility
     seed = args.seed + local_rank
@@ -141,11 +142,12 @@ def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, va
     max_steps = epochs * setps_per_epoch
     num_warmup_steps = int(max_steps * config["warmup_ratio"])
 
-    args.logger.info(f"total epochs: {epochs}")
-    args.logger.info(f"total steps: {max_steps}")
-    args.logger.info(f"steps per epochs: {setps_per_epoch}")
-    args.logger.info(f"warmup steps: {num_warmup_steps}")
-    print_info(args)
+    if args.global_rank == 0:
+        print(f"total epochs: {epochs}")
+        print(f"total steps: {max_steps}")
+        print(f"steps per epochs: {setps_per_epoch}")
+        print(f"warmup steps: {num_warmup_steps}")
+        print_info(args)
 
     # build model and optimizers
     model = TwoStreamModel(args, config)
@@ -155,7 +157,7 @@ def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, va
 
     pretrain_file = config["pretrain_file"]
     if pretrain_file and os.path.exists(pretrain_file):
-        args.logger.info(f"加载已经预训练过的模型, file= {pretrain_file}")
+        print(f"加载已经预训练过的模型, file= {pretrain_file}")
         model.load_state_dict(torch.load(pretrain_file, map_location='cpu'), strict=False)
 
 
@@ -178,7 +180,7 @@ def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, va
     #     scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     #     start_epoch = checkpoint['epoch'] + 1
 
-    # args.logger.info(f" start_epoch  = {start_epoch}")
+    # print(f" start_epoch  = {start_epoch}")
 
     model = model.to(args.device)
 
@@ -262,9 +264,9 @@ def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, va
             ema_loss = 0.9 * ema_loss + 0.1 * loss
             ema_acc = 0.9 * ema_acc + 0.1 * accuracy
 
-            if print_step % config["print_steps"] == 0:
+            if args.global_rank == 0 and print_step % config["print_steps"] == 0:
                 lr = optimizer.param_groups[0]['lr']
-                args.logger.info(f"Epoch {epoch} step [{print_step} / {setps_per_epoch}] : loss {print_loss/print_step:.3f}, "
+                print(f"Epoch {epoch} step [{print_step} / {setps_per_epoch}] : loss {print_loss/print_step:.3f}, "
                                  f"ema_acc {ema_acc:.3f}, learning_rate: {lr}")
 
             # 评估
@@ -276,29 +278,31 @@ def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, va
                     s_time = time.time()
                     loss, results, predictions, labels = validate(model, val_dataloader)
                     results = {k: round(v, 4) for k, v in results.items()}
-                    args.logger.info(f"Eval epoch {epoch} step [{print_step} / {setps_per_epoch}]  : loss {loss:.3f}, {results},"
-                                     f"cost time {time.time() - s_time} ")
-                    score = results["mean_f1"]
-                    if score > best_score:
-                        best_score = score
-                        save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_best_score.bin'
-                        model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
-                        torch.save({"model_state_dict": model_save}, save_file)
-                        args.logger.info(f"save mode to file {save_file}")
+                    if args.global_rank == 0:
+                        print(f"Eval epoch {epoch} step [{print_step} / {setps_per_epoch}]  : loss {loss:.3f}, {results},"
+                                         f"cost time {time.time() - s_time} ")
+                        score = results["mean_f1"]
+                        if score > best_score:
+                            best_score = score
+                            save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_best_score.bin'
+                            model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
+                            torch.save({"model_state_dict": model_save}, save_file)
+                            print(f"save mode to file {save_file}")
             else:
                 # 全量保存最后一轮
-                if epoch == 3 and print_step % 500 == 0:
-                    args.logger.info(f"全量训练无评估")
+                if args.global_rank == 0 and epoch == 3 and print_step % 500 == 0:
+                    print(f"全量训练无评估")
                     model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
                     save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_epoch_{epoch}_step_{print_step}.bin'
                     torch.save({"model_state_dict": model_save}, save_file)
-                    args.logger.info(f"save mode to file {save_file}")
+                    print(f"save mode to file {save_file}")
 
             # 结束评估
             if args.use_ema:
                 ema.restore()
         # epoch end
-        args.logger.info(f"Epoch {epoch} step [{print_step} / {setps_per_epoch}] : loss {print_loss / print_step:.3f}, "
+        if args.global_rank == 0:
+            print(f"Epoch {epoch} step [{print_step} / {setps_per_epoch}] : loss {print_loss / print_step:.3f}, "
                          f"ema_acc {ema_acc:.3f}")
 
         # 评估
@@ -309,33 +313,36 @@ def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, va
             s_time = time.time()
             loss, results, predictions, labels = validate(model, val_dataloader)
             results = {k: round(v, 4) for k, v in results.items()}
-            args.logger.info(f"Eval epoch {epoch} : loss {loss:.3f}, {results} , cost time {time.time() - s_time} ")
-            score = results["mean_f1"]
-            if score > best_score:
-                best_score = score
-                save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_best_score.bin'
-                model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
-                torch.save({"model_state_dict": model_save}, save_file)
-                args.logger.info(f"save mode to file {save_file}")
+            if args.global_rank == 0:
+                print(f"Eval epoch {epoch} : loss {loss:.3f}, {results} , cost time {time.time() - s_time} ")
+                score = results["mean_f1"]
+                if score > best_score:
+                    best_score = score
+                    save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_best_score.bin'
+                    model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
+                    torch.save({"model_state_dict": model_save}, save_file)
+                    print(f"save mode to file {save_file}")
 
         else:
             # 全量保存最后一轮
-            args.logger.info(f"全量训练无评估")
-            # if epoch == 3:
-            model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
-            save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_epoch_{epoch}_step_{print_step}.bin'
-            torch.save({"model_state_dict": model_save }, save_file)
-            args.logger.info(f"save mode to file {save_file}")
-        # 结束评估
+            if args.global_rank == 0:
+                print(f"全量训练无评估")
+                # if epoch == 3:
+                model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
+                save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_epoch_{epoch}_step_{print_step}.bin'
+                torch.save({"model_state_dict": model_save }, save_file)
+                print(f"save mode to file {save_file}")
+            # 结束评估
         if args.use_ema:
             ema.restore()
         dist.barrier()
-        args.logger.info(f"cost time: {time.time() - start_time}")
+        if args.global_rank == 0:
+            print(f"cost time: {time.time() - start_time}")
         # # todo
         # if epoch == 3:
         #     break
 
-    args.logger.info(f" train finished!..................")
+    print(f" train finished!..................")
     torch.cuda.empty_cache()
 
 def main():
@@ -356,11 +363,11 @@ def main():
     args.savedmodel_path = os.path.join(args.model_path, "finetune", version)
     os.makedirs(args.savedmodel_path, exist_ok=True)
 
-    args.logger.info("Training/evaluation parameters: %s, %s", args, config)
+    print("Training/evaluation parameters: %s, %s", args, config)
 
     yaml.dump(config, open(os.path.join(args.savedmodel_path, 'config.yaml'), 'w'))
 
-
+    args.global_world_size = args.ngpus_per_node * args.nodes
     # 判断是否多折
     if args.n_splits > 0:
         with open(args.train_annotation, 'r', encoding='utf8') as f:
@@ -371,11 +378,11 @@ def main():
         kfold = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
         for fold_idx, (train_index, val_index) in enumerate(kfold.split(X, y)):
 
-            args.logger.info(f"-----------------开始训练, 第 {fold_idx+1} 折------------------------")
-            args.logger.info(f"train data num = {len(train_index)}, val data num = {len(val_index)}")
+            print(f"-----------------开始训练, 第 {fold_idx+1} 折------------------------")
+            print(f"train data num = {len(train_index)}, val data num = {len(val_index)}")
             #train_and_validate(args, config, train_index, val_index, fold_idx+1)
             mp.spawn(train_and_validate, nprocs=args.ngpus_per_node, args=(args.ngpus_per_node, args, config, train_index, val_index, fold_idx+1))
-            args.logger.info(f"-----------------结束训练, 第 {fold_idx+1} 折------------------------")
+            print(f"-----------------结束训练, 第 {fold_idx+1} 折------------------------")
             # todo 是否开启
             if fold_idx+1 == 1:
                 break
@@ -386,4 +393,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
