@@ -1,4 +1,5 @@
 
+
 import math
 import numpy as np
 from functools import partial
@@ -36,6 +37,9 @@ class TwoStreamModel(nn.Module):
         # self.video_encoder = VisualFeatEncoder(bert_cfg, frame_embedding_size)
 
         self.video_encoder = swin_tiny(args.swin_pretrained_path)
+
+        self.video_gru = nn.GRU(frame_embedding_size, frame_embedding_size//2, bidirectional=True, batch_first=True, num_layers=2)
+        self.video_norm = nn.LayerNorm(frame_embedding_size, eps=1e-12)
 
         self.cross_layers = nn.ModuleList(
             [LXRTXLayer(bert_cfg) for _ in range(self.cross_layers_num)]
@@ -76,6 +80,11 @@ class TwoStreamModel(nn.Module):
 
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
         video_embeds = self.video_encoder(video_feature)
+
+        video_gru_output, _ = self.video_gru(video_embeds)
+        video_embeds = self.video_norm(video_embeds + video_gru_output)
+
+
         text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
         # 多模态融合, 参考LXMERT, cross_attention+self_attention+FFN
         text_outputs = text_embeds
@@ -155,5 +164,6 @@ def get_encoder_attention_mask(mask):
     encoder_mask = (1.0 - encoder_mask) * -10000.0
 
     return encoder_mask
+
 
 
