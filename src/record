@@ -1,3 +1,6 @@
+******************初赛5折*********************
+distrill=False  线下0.6700
+distrill=True   线下0.6752
 *************20220706*************
 # 时间记录
 # finetune  训练100step 100s
@@ -5,7 +8,7 @@
  bert_seq_length = 32
  train_batch_size = 32
 
-# 1、数据量20000，推理时间251s
+# 1、数据量20000，推理时间251s, batch_size=128,314s
 ## config配置建议
 prefetch = 4
 num_workers= 2
@@ -41,6 +44,17 @@ val_batch_size = 256
     prefetch = 8
     num_workers= 4
 
-### 5. 线上测试通过, 总计296s, 日志打印是显示241,255， 线上0.674647，线下+EMA的3轮/10轮0.6793
+### 5. 线上测试通过, 总计296s, 日志打印是显示241,255， 线上0.6746，线下+EMA的4轮/10轮0.6793
+    batch_size 256
+    prefetch = 8
+    num_workers= 4
+*************20220707*************
+## version=3.0 distrill=False  线下0.6803， 不能取过拟合的，效果线上只有0.668
+## version=4.0 distrill=True   线下--效果差不多，最后崩了
 
+# 加层, video_encoder 后接 bi-gru
+## version=5.0  效果一般,
 
+## version=6.0  均匀取桢 差不多没跑完
+
+## version=7.0  均匀取桢 +bigru + Add&norm
