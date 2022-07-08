@@ -1,5 +1,3 @@
-
-
 import math
 import numpy as np
 from functools import partial
@@ -48,7 +46,11 @@ class TwoStreamModel(nn.Module):
         # self.temp = nn.Parameter(torch.ones([]) * temp)
 
         #  分类头
-        self.cls_linear = torch.nn.Linear(bert_hidden_size * 2, self.num_classes)
+        self.cls_linear_fuse = torch.nn.Linear(bert_hidden_size * 2, self.num_classes)
+        self.cls_linear_text = torch.nn.Linear(bert_hidden_size, self.num_classes)
+        self.cls_linear_video = torch.nn.Linear(bert_hidden_size, self.num_classes)
+        self.cls_linear = torch.nn.Linear(self.num_classes * 3, self.num_classes)
+
 
         self.is_distrill = config["distrill"]
 
@@ -96,7 +98,17 @@ class TwoStreamModel(nn.Module):
         concatenate_pooling = torch.cat((text_feats, video_feats), dim=-1)
         concatenate_pooling = nn.Dropout(0.2)(concatenate_pooling)
         # concatenate_pooling = nn.Dropout(0.2)(text_outputs[:, 0, :])
-        preds = self.cls_linear(concatenate_pooling)
+        preds_fuse = nn.Tanh()(self.cls_linear_fuse(concatenate_pooling))
+
+        video_pooling = nn.Dropout(0.2)(video_embeds.mean(1))
+        preds_video = nn.Tanh()(self.cls_linear_video(video_pooling))
+
+        text_pooling = nn.Dropout(0.2)(text_embeds.mean(1))
+        preds_text = nn.Tanh()(self.cls_linear_text(text_pooling))
+
+        preds = torch.cat((preds_text, preds_video, preds_fuse), dim=-1)
+        preds = self.cls_linear(preds)
+
 
         if labels is None:
             return F.log_softmax(preds, dim=-1)
