@@ -49,12 +49,14 @@ val_batch_size = 256
     prefetch = 8
     num_workers= 4
 *************20220707*************
-## version=3.0 distrill=False  线下0.6803， 不能取过拟合的，效果线上只有0.668
+## version=3.0 distrill=False  线下0.6803， 不能取过拟合的，效果线上只有0.668, 应该要取前面拟合的6801
 ## version=4.0 distrill=True   线下--效果差不多，最后崩了
 
 # 加层, video_encoder 后接 bi-gru
 ## version=5.0  效果一般,
 
-## version=6.0  均匀取桢 差不多没跑完
+## version=8.0  均匀取桢
+ # 线下6805
 
 ## version=7.0  均匀取桢 +bigru + Add&norm
+ 效果不行
