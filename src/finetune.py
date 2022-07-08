@@ -141,7 +141,7 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
             video_feature = batch["frame_input"].to(args.device)
             video_mask = batch['frame_mask'].to(args.device)
             labels = batch["label"].to(args.device)
-
+            del batch
             if epoch > 1:
                 alpha = config['alpha']
             else:

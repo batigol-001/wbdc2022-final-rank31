@@ -26,5 +26,14 @@ sudo docker run -it tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:b
 sudo docker push tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:baseline_3.0
 
 
-CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.launch --nproc_per_node=2 pretrain_DDP.py
-python inference.py --test_annotation '/home/tione/notebook/demo_data/annotations/semi_demo.json' --test_zip_frames '/home/tione/notebook/demo_data/zip_frames/demo/' --test_output_csv './result.csv'
+CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.launch \
+    --nproc_per_node=2 \
+    --nnodes=1 \
+    --node_rank=0 \
+    --master_addr=localhost \
+    --master_port=22222 \
+    pretrain_DDP.py
+
+
+python inference.py --test_annotation '/home/tione/notebook/demo_data/annotations/semi_demo.json' \
+    --test_zip_frames '/home/tione/notebook/demo_data/zip_frames/demo/' --test_output_csv './result.csv'

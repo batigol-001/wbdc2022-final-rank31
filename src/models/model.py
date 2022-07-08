@@ -38,8 +38,7 @@ class TwoStreamModel(nn.Module):
 
         self.video_encoder = swin_tiny(args.swin_pretrained_path)
 
-        self.video_gru = nn.GRU(frame_embedding_size, frame_embedding_size//2, bidirectional=True, batch_first=True, num_layers=2)
-        self.video_norm = nn.LayerNorm(frame_embedding_size, eps=1e-12)
+        # self.video_gru = VideoGRU(frame_embedding_size)
 
         self.cross_layers = nn.ModuleList(
             [LXRTXLayer(bert_cfg) for _ in range(self.cross_layers_num)]
@@ -81,9 +80,7 @@ class TwoStreamModel(nn.Module):
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
         video_embeds = self.video_encoder(video_feature)
 
-        video_gru_output, _ = self.video_gru(video_embeds)
-        video_embeds = self.video_norm(video_embeds + video_gru_output)
-
+        # video_embeds = self.video_gru(video_encoder_feature, video_mask)
 
         text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
         # 多模态融合, 参考LXMERT, cross_attention+self_attention+FFN
@@ -93,6 +90,7 @@ class TwoStreamModel(nn.Module):
             text_outputs, video_outputs = layer_module(text_outputs, get_encoder_attention_mask(text_mask),
                                                        video_outputs, get_encoder_attention_mask(video_mask))
         #
+
         text_feats = text_outputs.mean(1)
         video_feats = video_outputs.mean(1)
         concatenate_pooling = torch.cat((text_feats, video_feats), dim=-1)
@@ -166,4 +164,32 @@ def get_encoder_attention_mask(mask):
     return encoder_mask
 
 
+class VideoGRU(torch.nn.Module):
+    def __init__(self, video_frame_size, dropout=0.2):
+        super(VideoGRU, self).__init__()
+        self.embedding_size = video_frame_size
+        self.dropout = torch.nn.Dropout(dropout)
+        self.GRU_layer = torch.nn.GRU(video_frame_size, video_frame_size, batch_first=True, bidirectional=True)
+        self.linear_layer = torch.nn.Linear(video_frame_size * 2, video_frame_size)
+        self.layer_norm = nn.LayerNorm(video_frame_size, eps=1e-12)
 
+    def forward(self, video_embeds, video_mask):
+
+        embedded_vector = self.dropout(video_embeds)
+        video_length = video_mask.sum(dim=-1).detach().cpu().numpy().astype("int64")
+        # torch.nn.utils.rnn.pack_padded_sequence()这里的pack，理解成压紧比较好。 将一个 填充过的变长序列 压紧。（填充时候，会有冗余，所以压紧一下）其中pack的过程为：（注意pack的形式，不是按行压，而是按列压）
+        packed_embedded_vector = torch.nn.utils.rnn.pack_padded_sequence(embedded_vector,
+                                                                         video_length,
+                                                                         batch_first=True,
+                                                                         enforce_sorted=False)
+        # packed_out的vectorsize从【batch_size，pad_x_len，embedding_size】变为【batch_size，pad_x_len，en_hid_size*2】
+        packed_out, _ = self.GRU_layer(packed_embedded_vector)
+        # torch.nn.utils.rnn.pad_packed_sequence()填充packed_sequence。上面提到的函数的功能是将一个填充后的变长序列压紧。 这个操作和pack_padded_sequence()是相反的。把压紧的序列再填充回来。填充时会初始化为0。
+        # out_vector的vectorsize没变，与packed_out的相同
+        out_vector, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_out, batch_first=True)
+        out_vector = torch.tanh(self.linear_layer(out_vector))
+
+        out_vector = self.layer_norm(out_vector + video_embeds)
+
+
+        return out_vector

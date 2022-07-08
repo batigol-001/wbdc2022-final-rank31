@@ -1,7 +1,7 @@
 
 import os
 import sys
-project_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))#print(path)
+project_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))#args.logger.info(path)
 sys.path.append(project_path)
 # import ruamel_yaml as yaml
 import yaml
@@ -28,7 +28,7 @@ from torch import multiprocessing as mp
 import torch.backends.cudnn as cudnn
 gc.enable()
 
-def validate(model, val_dataloader):
+def validate(device, model, val_dataloader):
     model.eval()
     predictions = []
     labels = []
@@ -36,10 +36,10 @@ def validate(model, val_dataloader):
     with torch.no_grad():
         for batch in val_dataloader:
             # batch = {key: value.cuda() for key, value in batch.items()}
-            text_input_ids = batch['text_input_ids'].cuda()
-            text_mask = batch['text_attention_mask'].cuda()
-            video_feature = batch["frame_input"].cuda()
-            video_mask = batch['frame_mask'].cuda()
+            text_input_ids = batch['text_input_ids'].to(device)
+            text_mask = batch['text_attention_mask'].to(device)
+            video_feature = batch["frame_input"].to(device)
+            video_mask = batch['frame_mask'].to(device)
             loss, _, pred_label_id, label = model(text_input_ids, text_mask, video_feature, video_mask, batch["label"].cuda(), 0.4)
             loss = loss.mean()
             predictions.extend(pred_label_id.detach().cpu().numpy())
@@ -50,17 +50,18 @@ def validate(model, val_dataloader):
     model.train()
     return loss, results, predictions, labels
 
+
 def print_info(args):
     if args.fp16:
-        print(" FP16 Starting")
+        args.logger.info(" FP16 Starting")
 
     if args.use_ema:
-        print(" EMA Starting")
+        args.logger.info(" EMA Starting")
 
     if args.use_adv == 1:
-        print("FGM Starting")
+        args.logger.info("FGM Starting")
     elif args.use_adv == 2:
-        print("PGD Starting")
+        args.logger.info("PGD Starting")
 
 
 from torch.utils.data import RandomSampler, SequentialSampler, DataLoader, ConcatDataset
@@ -110,21 +111,9 @@ def create_ddp_dataloaders(args, config, train_index, val_index):
     return train_dataloader, val_dataloader
 
 
-def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, val_index, fold_idx):
+def train_and_validate(rank, local_rank, device, args, config, train_index, val_index, fold_idx):
 
-    args.global_rank = args.node_rank * ngpus_per_node + local_rank
-
-    dist.init_process_group(
-        backend="nccl",
-        init_method=args.dist_url,
-        world_size=args.global_world_size,
-        rank=args.global_rank,
-    )
-
-    args.device = torch.device("cuda", local_rank)
-    torch.cuda.set_device(local_rank)
-    if args.global_rank == 0:
-        print(f"[init] == local rank: {local_rank}, global rank: {args.global_rank} ==")    
+    args.logger.info(f"[init] == local rank: {local_rank}, global rank: {rank} ==")
 
     # fix the seed for reproducibility
     seed = args.seed + local_rank
@@ -142,22 +131,22 @@ def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, va
     max_steps = epochs * setps_per_epoch
     num_warmup_steps = int(max_steps * config["warmup_ratio"])
 
-    if args.global_rank == 0:
-        print(f"total epochs: {epochs}")
-        print(f"total steps: {max_steps}")
-        print(f"steps per epochs: {setps_per_epoch}")
-        print(f"warmup steps: {num_warmup_steps}")
+    if rank == 0:
+        args.logger.info(f"total epochs: {epochs}")
+        args.logger.info(f"total steps: {max_steps}")
+        args.logger.info(f"steps per epochs: {setps_per_epoch}")
+        args.logger.info(f"warmup steps: {num_warmup_steps}")
         print_info(args)
 
     # build model and optimizers
     model = TwoStreamModel(args, config)
 
     # for n, m in model.named_parameters():
-    #     print(n)
+    #     args.logger.info(n)
 
     pretrain_file = config["pretrain_file"]
     if pretrain_file and os.path.exists(pretrain_file):
-        print(f"加载已经预训练过的模型, file= {pretrain_file}")
+        args.logger.info(f"加载已经预训练过的模型, file= {pretrain_file}")
         model.load_state_dict(torch.load(pretrain_file, map_location='cpu'), strict=False)
 
 
@@ -180,9 +169,9 @@ def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, va
     #     scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     #     start_epoch = checkpoint['epoch'] + 1
 
-    # print(f" start_epoch  = {start_epoch}")
+    # args.logger.info(f" start_epoch  = {start_epoch}")
 
-    model = model.to(args.device)
+    model = model.to(device)
 
     # for state in optimizer.state.values():
     #     for k, v in state.items():
@@ -212,12 +201,12 @@ def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, va
 
         for i, batch in enumerate(train_dataloader):
             model.train()
-            #batch = {key: value.to(args.device) for key, value in batch.items()}
-            text_input_ids = batch['text_input_ids'].to(args.device)
-            text_mask = batch['text_attention_mask'].to(args.device)
-            video_feature = batch["frame_input"].to(args.device)
-            video_mask = batch['frame_mask'].to(args.device)
-            labels = batch["label"].to(args.device)
+            #batch = {key: value.to(device for key, value in batch.items()}
+            text_input_ids = batch['text_input_ids'].to(device)
+            text_mask = batch['text_attention_mask'].to(device)
+            video_feature = batch["frame_input"].to(device)
+            video_mask = batch['frame_mask'].to(device)
+            labels = batch["label"].to(device)
 
             if epoch > 1:
                 alpha = config['alpha']
@@ -264,9 +253,9 @@ def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, va
             ema_loss = 0.9 * ema_loss + 0.1 * loss
             ema_acc = 0.9 * ema_acc + 0.1 * accuracy
 
-            if args.global_rank == 0 and print_step % config["print_steps"] == 0:
+            if rank == 0 and print_step % config["print_steps"] == 0:
                 lr = optimizer.param_groups[0]['lr']
-                print(f"Epoch {epoch} step [{print_step} / {setps_per_epoch}] : loss {print_loss/print_step:.3f}, "
+                args.logger.info(f"Epoch {epoch} step [{print_step} / {setps_per_epoch}] : loss {print_loss/print_step:.3f}, "
                                  f"ema_acc {ema_acc:.3f}, learning_rate: {lr}")
 
             # 评估
@@ -276,10 +265,10 @@ def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, va
             if val_dataloader is not None:
                 if epoch >= 3 and print_step % 500 == 0:
                     s_time = time.time()
-                    loss, results, predictions, labels = validate(model, val_dataloader)
+                    loss, results, predictions, labels = validate(device, model, val_dataloader)
                     results = {k: round(v, 4) for k, v in results.items()}
-                    if args.global_rank == 0:
-                        print(f"Eval epoch {epoch} step [{print_step} / {setps_per_epoch}]  : loss {loss:.3f}, {results},"
+                    if rank == 0:
+                        args.logger.info(f"Eval epoch {epoch} step [{print_step} / {setps_per_epoch}]  : loss {loss:.3f}, {results},"
                                          f"cost time {time.time() - s_time} ")
                         score = results["mean_f1"]
                         if score > best_score:
@@ -287,22 +276,22 @@ def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, va
                             save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_best_score.bin'
                             model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
                             torch.save({"model_state_dict": model_save}, save_file)
-                            print(f"save mode to file {save_file}")
+                            args.logger.info(f"save mode to file {save_file}")
             else:
                 # 全量保存最后一轮
-                if args.global_rank == 0 and epoch == 3 and print_step % 500 == 0:
-                    print(f"全量训练无评估")
+                if rank == 0 and epoch == 3 and print_step % 500 == 0:
+                    args.logger.info(f"全量训练无评估")
                     model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
                     save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_epoch_{epoch}_step_{print_step}.bin'
                     torch.save({"model_state_dict": model_save}, save_file)
-                    print(f"save mode to file {save_file}")
+                    args.logger.info(f"save mode to file {save_file}")
 
             # 结束评估
             if args.use_ema:
                 ema.restore()
         # epoch end
-        if args.global_rank == 0:
-            print(f"Epoch {epoch} step [{print_step} / {setps_per_epoch}] : loss {print_loss / print_step:.3f}, "
+        if rank == 0:
+            args.logger.info(f"Epoch {epoch} step [{print_step} / {setps_per_epoch}] : loss {print_loss / print_step:.3f}, "
                          f"ema_acc {ema_acc:.3f}")
 
         # 评估
@@ -311,47 +300,55 @@ def train_and_validate(local_rank, ngpus_per_node, args, config, train_index, va
 
         if val_dataloader is not None:
             s_time = time.time()
-            loss, results, predictions, labels = validate(model, val_dataloader)
+            loss, results, predictions, labels = validate(device, model, val_dataloader)
             results = {k: round(v, 4) for k, v in results.items()}
-            if args.global_rank == 0:
-                print(f"Eval epoch {epoch} : loss {loss:.3f}, {results} , cost time {time.time() - s_time} ")
+            if rank == 0:
+                args.logger.info(f"Eval epoch {epoch} : loss {loss:.3f}, {results} , cost time {time.time() - s_time} ")
                 score = results["mean_f1"]
                 if score > best_score:
                     best_score = score
                     save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_best_score.bin'
                     model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
                     torch.save({"model_state_dict": model_save}, save_file)
-                    print(f"save mode to file {save_file}")
+                    args.logger.info(f"save mode to file {save_file}")
 
         else:
             # 全量保存最后一轮
-            if args.global_rank == 0:
-                print(f"全量训练无评估")
+            if rank == 0:
+                args.logger.info(f"全量训练无评估")
                 # if epoch == 3:
                 model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
                 save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_epoch_{epoch}_step_{print_step}.bin'
                 torch.save({"model_state_dict": model_save }, save_file)
-                print(f"save mode to file {save_file}")
+                args.logger.info(f"save mode to file {save_file}")
             # 结束评估
         if args.use_ema:
             ema.restore()
         dist.barrier()
-        if args.global_rank == 0:
-            print(f"cost time: {time.time() - start_time}")
+        if rank == 0:
+            args.logger.info(f"cost time: {time.time() - start_time}")
         # # todo
         # if epoch == 3:
         #     break
 
-    print(f" train finished!..................")
+    args.logger.info(f" train finished!..................")
     torch.cuda.empty_cache()
 
 def main():
+
+    # 0. set up distributed device
+    rank = int(os.environ["RANK"])
+    local_rank = int(os.environ["LOCAL_RANK"])
+    torch.cuda.set_device(rank % torch.cuda.device_count())
+    dist.init_process_group(backend="nccl")
+    device = torch.device("cuda", local_rank)
 
     args = parse_args()
 
     config = yaml.load(open("configs/Finetune.yaml", 'r'), Loader=yaml.Loader)
     config["lr"] = float(config["lr"])
     config["other_lr"] = float(config["other_lr"])
+    config["train_batch_size"] = config["train_batch_size"] // 2
 
     version = str(config["version"])
     log_path = os.path.join(args.log_path, "finetune")
@@ -363,11 +360,10 @@ def main():
     args.savedmodel_path = os.path.join(args.model_path, "finetune", version)
     os.makedirs(args.savedmodel_path, exist_ok=True)
 
-    print("Training/evaluation parameters: %s, %s", args, config)
+    args.logger.info("Training/evaluation parameters: %s, %s", args, config)
 
     yaml.dump(config, open(os.path.join(args.savedmodel_path, 'config.yaml'), 'w'))
 
-    args.global_world_size = args.ngpus_per_node * args.nodes
     # 判断是否多折
     if args.n_splits > 0:
         with open(args.train_annotation, 'r', encoding='utf8') as f:
@@ -377,18 +373,18 @@ def main():
         y = [category_id_to_lv2id(c["category_id"]) for c in anns][:]
         kfold = StratifiedKFold(n_splits=args.n_splits, shuffle=True, random_state=args.seed)
         for fold_idx, (train_index, val_index) in enumerate(kfold.split(X, y)):
-
-            print(f"-----------------开始训练, 第 {fold_idx+1} 折------------------------")
-            print(f"train data num = {len(train_index)}, val data num = {len(val_index)}")
-            #train_and_validate(args, config, train_index, val_index, fold_idx+1)
-            mp.spawn(train_and_validate, nprocs=args.ngpus_per_node, args=(args.ngpus_per_node, args, config, train_index, val_index, fold_idx+1))
-            print(f"-----------------结束训练, 第 {fold_idx+1} 折------------------------")
+            if rank == 0:
+                args.logger.info(f"-----------------开始训练, 第 {fold_idx+1} 折------------------------")
+                args.logger.info(f"train data num = {len(train_index)}, val data num = {len(val_index)}")
+            train_and_validate(rank, local_rank, device, args, config, train_index, val_index, fold_idx+1)
+            if rank == 0:
+                args.logger.info(f"-----------------结束训练, 第 {fold_idx+1} 折------------------------")
             # todo 是否开启
             if fold_idx+1 == 1:
                 break
     # 全量
     else:
-        train_and_validate(args, config, None, None, 0)
+        train_and_validate(rank, local_rank, device,args, config, None, None, 0)
 
 
 if __name__ == '__main__':

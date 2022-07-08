@@ -40,8 +40,7 @@ class TwoStreamModel(nn.Module):
         )
 
         # 温度参数
-
-        self.temp = torch.tensor(temp)
+        self.temp = nn.Parameter(torch.ones([]) * temp)
 
         self.vision_proj = nn.Linear(bert_hidden_size, embed_dim)
         self.text_proj = nn.Linear(bert_hidden_size, embed_dim)

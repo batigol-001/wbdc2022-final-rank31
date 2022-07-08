@@ -597,7 +597,7 @@ class SwinTransformer(nn.Module):
 
 
 def swin_tiny(pretrained=None):
-    model = SwinTransformer(img_size=224, num_classes=0)
+    model = SwinTransformer(img_size=224, num_classes=0, depths=[2, 2, 18, 2])
     if pretrained is not None:
         # print("加载 swin 权重")
         checkpoint = torch.load(pretrained, map_location='cpu')['model']
