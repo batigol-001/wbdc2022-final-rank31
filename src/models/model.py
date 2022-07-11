@@ -46,11 +46,7 @@ class TwoStreamModel(nn.Module):
         # self.temp = nn.Parameter(torch.ones([]) * temp)
 
         #  分类头
-        self.cls_linear_fuse = torch.nn.Linear(bert_hidden_size * 2, self.num_classes)
-        self.cls_linear_text = torch.nn.Linear(bert_hidden_size, self.num_classes)
-        self.cls_linear_video = torch.nn.Linear(bert_hidden_size, self.num_classes)
-        self.cls_linear = torch.nn.Linear(self.num_classes * 3, self.num_classes)
-
+        self.cls_linear = torch.nn.Linear(bert_hidden_size * 2, self.num_classes)
 
         self.is_distrill = config["distrill"]
 
@@ -95,19 +91,11 @@ class TwoStreamModel(nn.Module):
 
         text_feats = text_outputs.mean(1)
         video_feats = video_outputs.mean(1)
-        concatenate_pooling = torch.cat((text_feats, video_feats), dim=-1)
-        concatenate_pooling = nn.Dropout(0.2)(concatenate_pooling)
+        concat_feats = torch.cat((text_feats, video_feats), dim=-1)
+        concat_feats = nn.Dropout(0.2)(concat_feats)
         # concatenate_pooling = nn.Dropout(0.2)(text_outputs[:, 0, :])
-        preds_fuse = nn.Tanh()(self.cls_linear_fuse(concatenate_pooling))
 
-        video_pooling = nn.Dropout(0.2)(video_embeds.mean(1))
-        preds_video = nn.Tanh()(self.cls_linear_video(video_pooling))
-
-        text_pooling = nn.Dropout(0.2)(text_embeds.mean(1))
-        preds_text = nn.Tanh()(self.cls_linear_text(text_pooling))
-
-        preds = torch.cat((preds_text, preds_video, preds_fuse), dim=-1)
-        preds = self.cls_linear(preds)
+        preds = self.cls_linear(concat_feats)
 
 
         if labels is None:
@@ -135,10 +123,10 @@ class TwoStreamModel(nn.Module):
 
                     text_feats_m = text_outputs_m.mean(1)
                     video_feats_m = video_outputs_m.mean(1)
-                    concatenate_pooling_m = torch.cat((text_feats_m, video_feats_m), dim=-1)
-                    concatenate_pooling_m = nn.Dropout(0.2)(concatenate_pooling_m)
+                    concat_feats_m = torch.cat((text_feats_m, video_feats_m), dim=-1)
+                    concat_feats_m = nn.Dropout(0.2)(concat_feats_m)
                     # concatenate_pooling_m = nn.Dropout(0.2)(text_outputs_m[:, 0, :])
-                    preds_m = self.cls_linear_m(concatenate_pooling_m)
+                    preds_m = self.cls_linear_m(concat_feats_m)
 
                 soft_labels = F.softmax(preds_m, dim=-1)
                 loss_distill = -torch.sum(F.log_softmax(preds, dim=-1) * soft_labels, dim=-1).mean()
