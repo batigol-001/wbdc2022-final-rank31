@@ -62,12 +62,12 @@ class TwoStreamModel(nn.Module):
                                 ]
             self.copy_params()
 
-    def forward(self, inputs, alpha=0, inference=False):
+    def forward(self, text_input_ids, text_mask, video_feature, video_mask, labels=None, alpha=0, inference=False):
 
-        text_input_ids = inputs['text_input_ids']
-        text_mask = inputs['text_attention_mask']
-        video_feature = inputs["frame_input"]
-        video_mask = inputs['frame_mask']
+        # text_input_ids = inputs['text_input_ids']
+        # text_mask = inputs['text_attention_mask']
+        # video_feature = inputs["frame_input"]
+        # video_mask = inputs['frame_mask']
 
         video_embeds = self.video_encoder(video_feature)
         text_embeds = self.text_encoder(text_input_ids, attention_mask=text_mask, return_dict=True, mode='text')["last_hidden_state"]
@@ -86,7 +86,7 @@ class TwoStreamModel(nn.Module):
         if inference:
             return F.log_softmax(preds, dim=-1)
         else:
-            labels = inputs["label"].squeeze(dim=1)
+            labels = labels.squeeze(dim=1)
             loss = F.cross_entropy(preds, labels)
 
             if self.is_distrill:
