@@ -17,8 +17,8 @@ from utlils.util import EMA, FGM, PGD
 from utlils.category_id_map import category_id_to_lv2id
 from dataset.data_helper import create_dataloaders
 
-# from models.model import TwoStreamModel
-from models.albef import TwoStreamModel
+from models.model import TwoStreamModel
+
 
 gc.enable()
 
