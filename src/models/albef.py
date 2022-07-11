@@ -7,7 +7,7 @@ import transformers
 from utlils.category_id_map import CATEGORY_ID_LIST
 from third_party.xbert import BertModel, BertConfig
 from third_party.lxrt import BertLayerNorm
-
+from third_party.swin import swin_tiny
 
 class TwoStreamModel(nn.Module):
     def __init__(self, args, config):
@@ -28,13 +28,12 @@ class TwoStreamModel(nn.Module):
 
 
         self.text_encoder = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg,  add_pooling_layer=False)
-        self.video_encoder = VisualFeatEncoder(bert_cfg, frame_embedding_size)
+        self.video_encoder = swin_tiny(args.swin_pretrained_path)
 
         # 温度参数
-        self.temp = nn.Parameter(torch.ones([]) * temp)
+        # self.temp = nn.Parameter(torch.ones([]) * temp)
 
         #  分类头
-
         self.cls_linear = nn.Sequential(
                   nn.Linear(self.text_encoder.config.hidden_size, self.text_encoder.config.hidden_size),
                   nn.ReLU(),
@@ -48,7 +47,7 @@ class TwoStreamModel(nn.Module):
         if self.is_distrill:
             # 创建动量模型
             self.text_encoder_m = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=False)
-            self.video_encoder_m = VisualFeatEncoder(bert_cfg, frame_embedding_size)
+            self.video_encoder_m = swin_tiny(args.swin_pretrained_path)
 
             self.cls_linear_m = nn.Sequential(
                 nn.Linear(self.text_encoder.config.hidden_size, self.text_encoder.config.hidden_size),
@@ -81,8 +80,8 @@ class TwoStreamModel(nn.Module):
                                             mode='fusion',
                                             output_hidden_states=True
                                             )
-        concatenate_pooling = nn.Dropout(0.2)(encoder_outputs["last_hidden_state"].mean(dim=1))
-        preds = self.cls_linear(concatenate_pooling)
+        concat_feats = nn.Dropout(0.2)(encoder_outputs["last_hidden_state"].mean(dim=1))
+        preds = self.cls_linear(concat_feats)
 
         if inference:
             return F.log_softmax(preds, dim=-1)
@@ -104,8 +103,8 @@ class TwoStreamModel(nn.Module):
                                             output_hidden_states=True
                                             )
 
-                    concatenate_pooling_m = nn.Dropout(0.2)(encoder_outputs_m["last_hidden_state"].mean(dim=1))
-                    preds_m = self.cls_linear_m(concatenate_pooling_m)
+                    concat_feats_m = nn.Dropout(0.2)(encoder_outputs_m["last_hidden_state"].mean(dim=1))
+                    preds_m = self.cls_linear_m(concat_feats_m)
 
                 soft_labels = F.softmax(preds_m, dim=-1)
                 loss_distill = -torch.sum(F.log_softmax(preds, dim=-1) * soft_labels, dim=-1).mean()

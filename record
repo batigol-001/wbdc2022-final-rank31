@@ -66,3 +66,4 @@ val_batch_size = 256
 
 *************20220711*************
  ## version=10.0  随即增强，效果不行
+ ## version=11.0  num_cross_layer=6
