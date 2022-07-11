@@ -22,7 +22,7 @@ def create_dataloaders(args, config, train_index, val_index):
     if train_index is not None and val_index is not None:
 
         train_dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, train_index)
-        val_dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, val_index, is_augment=False)
+        val_dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, val_index)
         if args.num_workers > 0:
             dataloader_class = partial(DataLoader, pin_memory=True, num_workers=args.num_workers, prefetch_factor=args.prefetch)
         else:
@@ -76,8 +76,7 @@ class MultiModalDataset(Dataset):
                  ann_path: str,
                  zip_frame_dir: str,
                  data_index: list = None,
-                 test_mode: bool = False,
-                 is_augment: bool = True):
+                 test_mode: bool = False):
 
 
         self.bert_seq_length = args.bert_seq_length
@@ -99,22 +98,22 @@ class MultiModalDataset(Dataset):
         self.tokenizer = BertTokenizer.from_pretrained(args.bert_dir, use_fast=True, cache_dir=args.bert_cache)
 
         # we use the standard image transform as in the offifical Swin-Transformer.
-        if is_augment:
-            self.transform = Compose([
-                RandomResizedCrop(224),
-                RandomHorizontalFlip(),
-                RandomAugment(2, 9, isPIL=True, augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
-                                                      'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
-                ToTensor(),
-                Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            ])
-        else:
-            self.transform = Compose([
-                Resize(256),
-                CenterCrop(224),
-                ToTensor(),
-                Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            ])
+        # if is_augment:
+        #     self.transform = Compose([
+        #         RandomResizedCrop(224),
+        #         RandomHorizontalFlip(),
+        #         RandomAugment(2, 9, isPIL=True, augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
+        #                                               'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
+        #         ToTensor(),
+        #         Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        #     ])
+
+        self.transform = Compose([
+            Resize(256),
+            CenterCrop(224),
+            ToTensor(),
+            Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
 
 
 
