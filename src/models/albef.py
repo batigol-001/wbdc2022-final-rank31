@@ -14,7 +14,7 @@ class TwoStreamModel(nn.Module):
         super(TwoStreamModel, self).__init__()
 
         bert_cfg = BertConfig.from_pretrained(args.bert_dir, cache_dir=args.bert_cache)
-        new_config = {"fusion_layer": 6, "encoder_width": 768}
+        new_config = {"fusion_layer": 9, "encoder_width": 768}
         bert_cfg.update(new_config)
 
         bert_hidden_size = bert_cfg.hidden_size
