@@ -105,7 +105,7 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
 
     # args.logger.info(f" start_epoch  = {start_epoch}")
 
-    model = model.to(args.device)
+    model.to(args.device)
 
     # for state in optimizer.state.values():
     #     for k, v in state.items():

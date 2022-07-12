@@ -68,4 +68,15 @@ val_batch_size = 256
  ## version=10.0  随即增强，效果不行
  ## version=11.0  num_cross_layer=6, 开始loss低，迭代后效果不行
  ## version=11.0  albef 线下6679 4/10轮
- ## version=12.0  distrill=True 10轮
+*************20220712*************
+ ## version=12.0  apex+ap16 3/10轮， 线下6761, 训练速度100s->72s， 推理速度242s->129s, gpu内存降低20%不到
+  提交一把, 线上，，
+  # docker安装apex
+
+ # 测试推理速度
+  DP8桢+bs256, 推理速度 242s
+  apex+ap16, 8桢+bs256, 推理速度 129s， gpu 82%
+  apex+ap16, 16桢+bs128, 推理速度 227s， gpu 82%
+  apex+ap16, 32桢+bs64, 推理速度 415s， gpu 82%
+  apex+ap16, 32桢+bs72, 推理速度 417s， gpu 90+
+  apex+ap16, 32桢+bs80, 推理速度 415s， gpu 82%

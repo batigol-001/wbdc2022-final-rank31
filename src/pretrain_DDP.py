@@ -11,16 +11,20 @@ import random
 
 import torch
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel
+# from torch.nn.parallel import DistributedDataParallel
 from torch import multiprocessing as mp
 import torch.backends.cudnn as cudnn
 
 from torch.utils.data import RandomSampler, SequentialSampler, DataLoader, ConcatDataset
 from transformers import get_linear_schedule_with_warmup
 from functools import partial
+from apex.parallel import convert_syncbn_model
+from apex.parallel import DistributedDataParallel
+from apex import amp
+
 from configs.config import parse_args
 from utlils.util import setup_device, setup_seed, build_optimizer, setup_logging
-from utlils.util import  init_distributed_mode, get_rank, get_world_size, is_main_process
+from utlils.util import init_distributed_mode, get_rank, get_world_size, is_main_process
 from dataset.data_helper import MultiModalDataset
 from models.model_pretrain import TwoStreamModel
 
@@ -130,18 +134,21 @@ def train_worker(rank, local_rank, device,args, config):
     # if os.path.exists(exist_pretrain_file):
     #     args.logger.info(f"加载已经预训练过的模型, file= {exist_pretrain_file}")
     #     model.load_state_dict(torch.load(exist_pretrain_file), strict=False)
-
-
     optimizer = build_optimizer(config, model)
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=max_steps)
-    model = model.to(device)
+
+    # 同步BN
+    # model = convert_syncbn_model(model)
+    model.to(device)
+    # 混合精度
+    model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
     # for state in optimizer.state.values():
     #     for k, v in state.items():
     #         if isinstance(v, torch.Tensor):
     #             state[k] = v.cuda()
 
-
-    torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank],  output_device=local_rank)
+    #DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
+    model = DistributedDataParallel(model, delay_allreduce=True)# device_ids=[local_rank], output_device=local_rank)
 
     best_loss = 1000
     for epoch in range(1, epochs+1):
@@ -156,10 +163,10 @@ def train_worker(rank, local_rank, device,args, config):
         for i, batch in enumerate(train_dataloader):
             model.train()
             # batch = {key: value.to(args.device) for key, value in batch.items()}
-            text_input_ids = batch['text_input_ids'].to(device)
-            text_mask = batch['text_attention_mask'].to(device)
-            video_feature = batch["frame_input"].to(device)
-            video_mask = batch['frame_mask'].to(device)
+            text_input_ids = batch['text_input_ids'].to(device, non_blocking=True)
+            text_mask = batch['text_attention_mask'].to(device, non_blocking=True)
+            video_feature = batch["frame_input"].to(device, non_blocking=True)
+            video_mask = batch['frame_mask'].to(device, non_blocking=True)
             del batch
 
             if epoch > 1:
@@ -168,8 +175,12 @@ def train_worker(rank, local_rank, device,args, config):
                 alpha =config['alpha'] * min(1, i / len(train_dataloader))
 
             loss, (mlm_loss,  ita_loss, itm_loss) = model(text_input_ids, text_mask, video_feature, video_mask, alpha)
+            # loss = loss.mean()
+            with amp.scale_loss(loss, optimizer) as scaled_loss:
+                scaled_loss.backward()
+            #loss.backward()
             loss = loss.mean()
-            loss.backward()
+
 
             optimizer.step()
             scheduler.step()

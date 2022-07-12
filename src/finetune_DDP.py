@@ -20,15 +20,20 @@ from dataset.data_helper import create_dataloaders
 
 from models.model import TwoStreamModel
 
+from apex.parallel import convert_syncbn_model
+from apex.parallel import DistributedDataParallel
+from apex import amp
+
 import random
 import numpy as np
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel
-from torch import multiprocessing as mp
 import torch.backends.cudnn as cudnn
+
+from dataset.utils import distributed_concat
+
 gc.enable()
 
-def validate(device, model, val_dataloader):
+def validate(device, model, val_dataloader, nums):
     model.eval()
     predictions = []
     labels = []
@@ -42,10 +47,17 @@ def validate(device, model, val_dataloader):
             video_mask = batch['frame_mask'].to(device)
             loss, _, pred_label_id, label = model(text_input_ids, text_mask, video_feature, video_mask, batch["label"].cuda(), 0.4)
             loss = loss.mean()
-            predictions.extend(pred_label_id.detach().cpu().numpy())
-            labels.extend(label.detach().cpu().numpy())
+
+            predictions.append(pred_label_id)
+            labels.append(label)
             losses.append(loss.detach().cpu().numpy())
         loss = sum(losses) / len(losses)
+
+        predictions = distributed_concat(torch.cat(predictions, dim=0), nums)
+        predictions = predictions.cpu().numpy()
+
+        labels = distributed_concat(torch.cat(labels, dim=0), nums)
+        labels = labels.cpu().numpy()
         results = evaluate(predictions, labels)
     model.train()
     return loss, results, predictions, labels
@@ -171,14 +183,19 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
 
     # args.logger.info(f" start_epoch  = {start_epoch}")
 
-    model = model.to(device)
+    # 同步BN
+    # model = convert_syncbn_model(model)
+    model.to(device)
+    # 混合精度
+    model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
     # for state in optimizer.state.values():
     #     for k, v in state.items():
     #         if isinstance(v, torch.Tensor):
     #             state[k] = v.cuda()
 
-    torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
+    # model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
+    model = DistributedDataParallel(model, delay_allreduce=True)
 
     if args.use_ema:
         ema = EMA(model, 0.999)
@@ -202,11 +219,11 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
         for i, batch in enumerate(train_dataloader):
             model.train()
             #batch = {key: value.to(device for key, value in batch.items()}
-            text_input_ids = batch['text_input_ids'].to(device)
-            text_mask = batch['text_attention_mask'].to(device)
-            video_feature = batch["frame_input"].to(device)
-            video_mask = batch['frame_mask'].to(device)
-            labels = batch["label"].to(device)
+            text_input_ids = batch['text_input_ids'].to(device, non_blocking=True)
+            text_mask = batch['text_attention_mask'].to(device, non_blocking=True)
+            video_feature = batch["frame_input"].to(device, non_blocking=True)
+            video_mask = batch['frame_mask'].to(device, non_blocking=True)
+            labels = batch["label"].to(device,  non_blocking=True)
 
             if epoch > 1:
                 alpha = config['alpha']
@@ -214,10 +231,11 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
                 alpha = config['alpha'] * min(1, i / len(train_dataloader))
 
             loss,accuracy, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, labels, alpha)
-            loss = loss.mean()
+            with amp.scale_loss(loss, optimizer) as scaled_loss:
+                scaled_loss.backward()
             accuracy = accuracy.mean()
 
-            loss.backward()
+            # loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
             if args.use_adv == 1:
                 # 对抗训练
@@ -249,7 +267,7 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
             optimizer.zero_grad()
 
             print_step += 1
-            print_loss += loss.item()
+            print_loss += loss.mean().item()
             ema_loss = 0.9 * ema_loss + 0.1 * loss
             ema_acc = 0.9 * ema_acc + 0.1 * accuracy
 
@@ -263,9 +281,9 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
                 ema.apply_shadow()
 
             if val_dataloader is not None:
-                if epoch >= 3 and print_step % 500 == 0:
+                if epoch >= 100 and print_step % 500 == 0:
                     s_time = time.time()
-                    loss, results, predictions, labels = validate(device, model, val_dataloader)
+                    loss, results, predictions, labels = validate(device, model, val_dataloader, len(val_index))
                     results = {k: round(v, 4) for k, v in results.items()}
                     if rank == 0:
                         args.logger.info(f"Eval epoch {epoch} step [{print_step} / {setps_per_epoch}]  : loss {loss:.3f}, {results},"
@@ -273,7 +291,7 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
                         score = results["mean_f1"]
                         if score > best_score:
                             best_score = score
-                            save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_best_score.bin'
+                            save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_best_score_{best_score}.bin'
                             model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
                             torch.save({"model_state_dict": model_save}, save_file)
                             args.logger.info(f"save mode to file {save_file}")
@@ -300,14 +318,14 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
 
         if val_dataloader is not None:
             s_time = time.time()
-            loss, results, predictions, labels = validate(device, model, val_dataloader)
+            loss, results, predictions, labels = validate(device, model, val_dataloader, len(val_index))
             results = {k: round(v, 4) for k, v in results.items()}
             if rank == 0:
                 args.logger.info(f"Eval epoch {epoch} : loss {loss:.3f}, {results} , cost time {time.time() - s_time} ")
                 score = results["mean_f1"]
                 if score > best_score:
                     best_score = score
-                    save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_best_score.bin'
+                    save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_best_score_{best_score}.bin'
                     model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
                     torch.save({"model_state_dict": model_save}, save_file)
                     args.logger.info(f"save mode to file {save_file}")
@@ -349,6 +367,7 @@ def main():
     config["lr"] = float(config["lr"])
     config["other_lr"] = float(config["other_lr"])
     config["train_batch_size"] = config["train_batch_size"] // 2
+    config["val_batch_size"] = config["val_batch_size"] // 2
 
     version = str(config["version"])
     log_path = os.path.join(args.log_path, "finetune")

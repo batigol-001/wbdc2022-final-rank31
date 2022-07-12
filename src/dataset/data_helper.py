@@ -167,6 +167,7 @@ class MultiModalDataset(Dataset):
         text_input_ids, text_attention_mask = self.tokenize_text(self.anns[idx])
 
 
+
         data = dict(
             frame_input=frame_input,
             frame_mask=frame_mask,
