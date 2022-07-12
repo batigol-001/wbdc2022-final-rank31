@@ -187,15 +187,15 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
     # model = convert_syncbn_model(model)
     model.to(device)
     # 混合精度
-    model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
+    #model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
     # for state in optimizer.state.values():
     #     for k, v in state.items():
     #         if isinstance(v, torch.Tensor):
     #             state[k] = v.cuda()
 
-    # model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
-    model = DistributedDataParallel(model, delay_allreduce=True)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
+    #model = DistributedDataParallel(model, delay_allreduce=True)
 
     if args.use_ema:
         ema = EMA(model, 0.999)
@@ -231,11 +231,11 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
                 alpha = config['alpha'] * min(1, i / len(train_dataloader))
 
             loss,accuracy, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, labels, alpha)
-            with amp.scale_loss(loss, optimizer) as scaled_loss:
-                scaled_loss.backward()
+            #with amp.scale_loss(loss, optimizer) as scaled_loss:
+                #scaled_loss.backward()
             accuracy = accuracy.mean()
 
-            # loss.backward()
+            loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
             if args.use_adv == 1:
                 # 对抗训练
