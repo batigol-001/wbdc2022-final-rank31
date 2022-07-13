@@ -29,7 +29,7 @@ import numpy as np
 import torch.distributed as dist
 import torch.backends.cudnn as cudnn
 
-from dataset.utils import distributed_concat
+from dataset.utils import distributed_concat, reduce_tensor
 
 gc.enable()
 
@@ -93,8 +93,10 @@ def create_ddp_dataloaders(args, config, train_index, val_index):
             # single-thread reading does not support prefetch_factor arg
             dataloader_class = partial(DataLoader, pin_memory=True, num_workers=0)
 
-        train_sampler = torch.utils.data.DistributedSampler(train_dataset, shuffle=True)
-        val_sampler = torch.utils.data.DistributedSampler(val_dataset, shuffle=False)
+
+
+        train_sampler = torch.utils.data.DistributedSampler(train_dataset, shuffle=True, seed=args.seed, drop_last=True)
+        val_sampler = torch.utils.data.DistributedSampler(val_dataset, shuffle=False, seed=args.seed, drop_last=False)
         train_dataloader = dataloader_class(train_dataset,
                                             batch_size=config["train_batch_size"],
                                             sampler=train_sampler,
@@ -184,18 +186,18 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
     # args.logger.info(f" start_epoch  = {start_epoch}")
 
     # 同步BN
-    # model = convert_syncbn_model(model)
+    model = convert_syncbn_model(model)
     model.to(device)
     # 混合精度
-    #model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
+    model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
     # for state in optimizer.state.values():
     #     for k, v in state.items():
     #         if isinstance(v, torch.Tensor):
     #             state[k] = v.cuda()
 
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
-    #model = DistributedDataParallel(model, delay_allreduce=True)
+    #model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
+    model = DistributedDataParallel(model, delay_allreduce=True)
 
     if args.use_ema:
         ema = EMA(model, 0.999)
@@ -212,7 +214,6 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
     for epoch in range(start_epoch, epochs+1):
         start_time = time.time()
         print_loss = 0.0
-        ema_loss = 0.0
         ema_acc = 0.0
         print_step = 0
 
@@ -230,13 +231,16 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
             else:
                 alpha = config['alpha'] * min(1, i / len(train_dataloader))
 
-            loss,accuracy, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, labels, alpha)
-            #with amp.scale_loss(loss, optimizer) as scaled_loss:
-                #scaled_loss.backward()
-            accuracy = accuracy.mean()
+            loss, accuracy, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, labels, alpha)
+            reduced_loss = reduce_tensor(loss.data)
+            reduced_accuracy = reduce_tensor(accuracy.data)
 
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
+            with amp.scale_loss(loss, optimizer) as scaled_loss:
+                scaled_loss.backward()
+                #torch.nn.utils.clip_grad_value_(amp.master_params(optimizer), config["max_grad_norm"])
+            # loss.backward()
+
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
             if args.use_adv == 1:
                 # 对抗训练
                 fgm.attack()  # 在embedding上添加对抗扰动
@@ -267,9 +271,8 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
             optimizer.zero_grad()
 
             print_step += 1
-            print_loss += loss.mean().item()
-            ema_loss = 0.9 * ema_loss + 0.1 * loss
-            ema_acc = 0.9 * ema_acc + 0.1 * accuracy
+            print_loss += reduced_loss.item()
+            ema_acc = 0.9 * ema_acc + 0.1 * reduced_accuracy.item()
 
             if rank == 0 and print_step % config["print_steps"] == 0:
                 lr = optimizer.param_groups[0]['lr']
@@ -369,6 +372,8 @@ def main():
     config["train_batch_size"] = config["train_batch_size"] // 2
     config["val_batch_size"] = config["val_batch_size"] // 2
 
+    if rank == 0:
+        print(f'lr={config["lr"]}, other_lr={config["other_lr"]}, train_batch_size={config["train_batch_size"]}, val_batch_size={config["val_batch_size"]}')
     version = str(config["version"])
     log_path = os.path.join(args.log_path, "finetune")
     filename = os.path.join(log_path, f"finetune_{version}.log")

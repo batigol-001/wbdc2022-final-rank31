@@ -112,6 +112,7 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
     #         if isinstance(v, torch.Tensor):
     #             state[k] = v.cuda()
 
+
     if args.n_gpu > 1:
         model = torch.nn.parallel.DataParallel(model)
 

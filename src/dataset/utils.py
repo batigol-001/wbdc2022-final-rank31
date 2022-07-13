@@ -14,6 +14,13 @@ def distributed_concat(tensor, num_total_examples):
     # truncate the dummy elements added by SequentialDistributedSampler
     return concat[:num_total_examples]
 
+def reduce_tensor(tensor: torch.Tensor):
+    rt = tensor.clone()
+    torch.distributed.all_reduce(rt, op=torch.distributed.reduce_op.SUM)
+    rt /= torch.distributed.get_world_size()
+    return rt
+
+
 
 # 来源：https://github.com/huggingface/transformers/blob/447808c85f0e6d6b0aeeb07214942bf1e578f9d2/src/transformers/trainer_pt_utils.py
 class SequentialDistributedSampler(torch.utils.data.sampler.Sampler):
