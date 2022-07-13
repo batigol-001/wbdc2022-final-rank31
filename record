@@ -69,7 +69,7 @@ val_batch_size = 256
  ## version=11.0  num_cross_layer=6, 开始loss低，迭代后效果不行
  ## version=11.0  albef 线下6679 4/10轮
 *************20220712*************
- ## version=12.0  apex+ap16 4/10轮， 线下6747, 训练速度100s->72s， 推理速度242s->129s, gpu内存降低20%不到
+ ## version=12.0  apex+ap16 3/10轮， 线下6744, 训练速度100s->72s， 推理速度242s->129s, gpu内存降低20%不到
   提交一把, 线上0.668968
   # 重新跑 GPU22358MiB
   # docker安装apex
@@ -82,4 +82,4 @@ val_batch_size = 256
   apex+ap16, 32桢+bs72, 推理速度 417s， gpu 90+
   apex+ap16, 32桢+bs80, 推理速度 415s， gpu 82%
 *************20220713*************
- ## version=12.0  apex+ap16 4/10轮，676
+ ## version=13.0  apex+ap16 4/10轮，676，loss极大，线上0.665863
