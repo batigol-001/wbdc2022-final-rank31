@@ -86,4 +86,6 @@ val_batch_size = 256
   apex+ap16, 32桢+bs80, 推理速度 415s， gpu 82%
 *************20220713*************
  ## version=13.0  apex+ap16 4/10轮，676，loss极大，线上0.665863,  bs 变小，lr未调小
- ## version=14.0  apex+ap16, 8桢+bs256, 继续调试 max_grad_norm: 1
+ ## version=14.0  apex+ap16, 8桢+bs256, 继续调试 3/10轮,线下0.676 loss=1.277，线上0.6715
+ ## v14基准,调试 version=15.0 warm_ratio = 0.05, lr调小 效果一样
+ ## vesion=16.0 数据

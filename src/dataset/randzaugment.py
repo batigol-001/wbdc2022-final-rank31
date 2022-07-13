@@ -2,6 +2,10 @@ import cv2
 import numpy as np
 
 
+def gaussian_blur(img):
+
+    return cv2.GaussianBlur(img, (3, 3), 3)
+
 ## aug functions
 def identity_func(img):
     return img
@@ -332,6 +336,9 @@ class RandomAugment(object):
             args = arg_dict[name](level)
             img = func_dict[name](img, *args)
         return img
+
+
+
 
 
 if __name__ == '__main__':

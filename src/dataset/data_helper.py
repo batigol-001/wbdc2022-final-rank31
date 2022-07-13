@@ -11,10 +11,23 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler
 from transformers import BertTokenizer
-from torchvision.transforms import Compose, Resize, CenterCrop, Normalize, ToTensor, RandomResizedCrop, RandomHorizontalFlip
+from torchvision.transforms import Compose, Resize, CenterCrop, Normalize, ToTensor, RandomResizedCrop, RandomCrop, RandomHorizontalFlip
 
 from utlils.category_id_map import category_id_to_lv2id
 from dataset.randzaugment import RandomAugment
+
+import cv2
+class GaussianBlur(object):
+    def __init__(self, K_size=3, sigmar=3, isPIL=True):
+        self.isPIL = isPIL
+        self.K_size = K_size
+        self.sigmar = sigmar
+
+    def __call__(self, img):
+        if self.isPIL:
+            img = np.array(img)
+        img = cv2.GaussianBlur(img, (self.K_size, self.K_size), self.sigmar)
+        return img
 
 def create_dataloaders(args, config, train_index, val_index):
     # args.tf_idf_model = load_train_model(args.tf_idf_file)
@@ -76,7 +89,8 @@ class MultiModalDataset(Dataset):
                  ann_path: str,
                  zip_frame_dir: str,
                  data_index: list = None,
-                 test_mode: bool = False):
+                 test_mode: bool = False,
+                 is_augment: bool = True):
 
 
         self.bert_seq_length = args.bert_seq_length
@@ -98,22 +112,26 @@ class MultiModalDataset(Dataset):
         self.tokenizer = BertTokenizer.from_pretrained(args.bert_dir, use_fast=True, cache_dir=args.bert_cache)
 
         # we use the standard image transform as in the offifical Swin-Transformer.
-        # if is_augment:
-        #     self.transform = Compose([
-        #         RandomResizedCrop(224),
-        #         RandomHorizontalFlip(),
-        #         RandomAugment(2, 9, isPIL=True, augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
-        #                                               'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
-        #         ToTensor(),
-        #         Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        #     ])
+        if is_augment:
+            self.transform = Compose([
+                Resize(256),
+                RandomCrop(224),
+                RandomHorizontalFlip(p=0.3),
+                GaussianBlur(),
+                RandomAugment(2, 9, isPIL=False, augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
+                                                      'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
+                ToTensor(),
+                Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ])
+        else:
+            self.transform = Compose([
+                Resize(256),
+                CenterCrop(224),
+                GaussianBlur(),
+                ToTensor(),
+                Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ])
 
-        self.transform = Compose([
-            Resize(256),
-            CenterCrop(224),
-            ToTensor(),
-            Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
 
 
 

@@ -85,7 +85,7 @@ def create_ddp_dataloaders(args, config, train_index, val_index):
 
     if train_index is not None and val_index is not None:
 
-        train_dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, train_index)
+        train_dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, train_index, is_augment=True)
         val_dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, val_index)
         if args.num_workers > 0:
             dataloader_class = partial(DataLoader, pin_memory=True, num_workers=args.num_workers, prefetch_factor=args.prefetch)
