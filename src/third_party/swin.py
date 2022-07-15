@@ -573,18 +573,31 @@ class SwinTransformer(nn.Module):
         x = torch.flatten(x, 1)
         return x
 
-    def forward(self, x):
+    def forward(self, x, mask):
         if x.dim() == 5:
             # support multi-frame inputs
             B, N, C, H, W = x.shape
             x = x.view(B * N, C, H, W)
+            # 处理 mask
+            mask = mask.view(B * N, -1).squeeze(-1)
+            x = x.permute(1, 2, 3, 0)
+            x = x.masked_select(mask.bool()).view(C, H, W, -1).permute(3, 0, 1, 2)
+            mask_not_zero_index = [i for i, v in enumerate(mask) if v != 0]
             output_shape = (B, N, -1)
+
+            x = self.forward_features(x)
+            x = self.head(x)
+            restore_x = torch.zeros(B * N, x.shape[-1])
+            restore_x = restore_x.to(x.device)
+            restore_x[mask_not_zero_index] = x
+            restore_x = restore_x.view(*output_shape)
+            return restore_x
         else:
             output_shape = (x.shape[0], -1)
-        x = self.forward_features(x)
-        x = self.head(x)
-        x = x.view(*output_shape)
-        return x
+            x = self.forward_features(x)
+            x = self.head(x)
+            x = x.view(*output_shape)
+            return x
 
     def flops(self):
         flops = 0
@@ -599,7 +612,7 @@ class SwinTransformer(nn.Module):
 def swin_tiny(pretrained=None):
     model = SwinTransformer(img_size=224, num_classes=0)
     if pretrained is not None:
-        # print("加载 swin 权重")
+        print("加载 swin 权重")
         checkpoint = torch.load(pretrained, map_location='cpu')['model']
         model.load_state_dict(checkpoint, strict=False)
     return model

@@ -51,6 +51,7 @@ def validate(device, model, val_dataloader, nums):
             predictions.append(pred_label_id)
             labels.append(label)
             losses.append(loss.detach().cpu().numpy())
+            del batch
         loss = sum(losses) / len(losses)
 
         predictions = distributed_concat(torch.cat(predictions, dim=0), nums)
@@ -85,7 +86,7 @@ def create_ddp_dataloaders(args, config, train_index, val_index):
 
     if train_index is not None and val_index is not None:
 
-        train_dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, train_index, is_augment=True)
+        train_dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, train_index)
         val_dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, val_index)
         if args.num_workers > 0:
             dataloader_class = partial(DataLoader, pin_memory=True, num_workers=args.num_workers, prefetch_factor=args.prefetch)
@@ -145,6 +146,7 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
     max_steps = epochs * setps_per_epoch
     num_warmup_steps = int(max_steps * config["warmup_ratio"])
 
+    config["print_steps"] = config["print_steps"] * config["accum_step"]
     if rank == 0:
         args.logger.info(f"total epochs: {epochs}")
         args.logger.info(f"total steps: {max_steps}")
@@ -165,8 +167,8 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
 
 
     optimizer = build_optimizer(config, model)
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps,
-                                                num_training_steps=max_steps)
+    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps//config["accum_step"],
+                                                num_training_steps=max_steps//config["accum_step"])
     start_epoch = 1
 
     # if config['resume'] != "" and os.path.exists(config['resume']):
@@ -235,6 +237,9 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
             reduced_loss = reduce_tensor(loss.data)
             reduced_accuracy = reduce_tensor(accuracy.data)
 
+            loss = loss / config["accum_step"]
+
+
             with amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
                 #torch.nn.utils.clip_grad_value_(amp.master_params(optimizer), config["max_grad_norm"])
@@ -264,12 +269,6 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
                     torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
                 pgd.restore()  # 恢复embedding参数
 
-            optimizer.step()
-            scheduler.step()
-            if args.use_ema:
-                ema.update()
-            optimizer.zero_grad()
-
             print_step += 1
             print_loss += reduced_loss.item()
             ema_acc = 0.9 * ema_acc + 0.1 * reduced_accuracy.item()
@@ -278,6 +277,13 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
                 lr = optimizer.param_groups[0]['lr']
                 args.logger.info(f"Epoch {epoch} step [{print_step} / {setps_per_epoch}] : loss {print_loss/print_step:.3f}, "
                                  f"ema_acc {ema_acc:.3f}, learning_rate: {lr}")
+
+            if print_step % config["accum_step"] == 0:
+                optimizer.step()
+                scheduler.step()
+                if args.use_ema:
+                    ema.update()
+                optimizer.zero_grad()
 
             # 评估
             if args.use_ema:

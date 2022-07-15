@@ -31,7 +31,7 @@ class TwoStreamModel(nn.Module):
 
         self.cross_layers_num = config["cross_layers_num"]
 
-        self.text_encoder = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=False)
+        self.text_encoder = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=True)
         #self.video_encoder = VisualFeatEncoder(bert_cfg, frame_embedding_size)
         self.video_encoder = swin_tiny(args.swin_pretrained_path)
 
@@ -51,7 +51,7 @@ class TwoStreamModel(nn.Module):
         self.lm = MaskLM(tokenizer_path=args.bert_dir)
 
         # 创建动量模型
-        self.text_encoder_m = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=False)
+        self.text_encoder_m = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=True)
         self.video_encoder_m = swin_tiny(args.swin_pretrained_path)#self.video_encoder_m = VisualFeatEncoder(bert_cfg, frame_embedding_size)
         self.cross_layers_m = nn.ModuleList(
             [LXRTXLayer(bert_cfg) for _ in range(self.cross_layers_num)]

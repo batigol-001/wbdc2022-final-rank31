@@ -76,8 +76,12 @@ class TwoStreamModel(nn.Module):
         # video_mask = inputs['frame_mask']
 
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
-        video_embeds = self.video_encoder(video_feature)
-
+        video_embeds = self.video_encoder(video_feature, video_mask)
+        # 768 / 16 = 48 , 48 = 4*4*3
+        aug_video_embeds = video_embeds[:,:,np.array([list(range(idx*48, (idx+1)*48)) for idx in torch.randperm(16)]).reshape(-1)]
+        aug_video_embeds = aug_video_embeds.to(video_embeds.device)
+        video_embeds = torch.cat([video_embeds, aug_video_embeds], dim=1)
+        print(video_embeds.shape)
         # video_embeds = self.video_gru(video_encoder_feature, video_mask)
 
         text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]

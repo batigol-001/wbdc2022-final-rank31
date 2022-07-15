@@ -27,6 +27,7 @@ other_lr: 0.0001
 weight_decay: 0.01
 adam_epsilon: 0.000001
 max_grad_norm: 5
+accum_step: 2
 
 other_lr_layers: ["linear", "video_encoder", "cross_layers"]
 
