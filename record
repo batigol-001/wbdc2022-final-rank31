@@ -92,4 +92,10 @@ val_batch_size = 256
  ## vesion=16.0 数据 无效果
  ## vesion=17.0  16+16, lr调小 3轮/10 6776 loss=1.294
  *************20220714*************
-  ## vesion=1.0 8+32 no ema
+  ## vesion=1.0 8+32 no ema, DDP+DP
+  # version=18.0 16+16, ema, ddpfp16, accumulate_step=2, lr不变， 3/10轮,线下0.6791 loss=1.271，线上0.672584
+  # version=19.0 8+32,
+
+# todo 推理时,去掉 log_softmax操作
+# todo
+# todo 视频+ocr(B*N形式)交互=>视频表示（Bs,768)  再与title,asr交互(BS,768), 在视频表示与文本表示交互, 改动较大
