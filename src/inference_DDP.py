@@ -24,7 +24,7 @@ import torch.backends.cudnn as cudnn
 
 from dataset.utils import distributed_concat, SequentialDistributedSampler
 
-# from torch2trt import torch2trt
+from torch2trt import torch2trt
 
 
 def inference():
@@ -40,11 +40,11 @@ def inference():
 
 
     # 1. load data
-    dataset = MultiModalDataset(args, config, args.test_annotation, args.test_zip_frames, data_index=None, test_mode=True)
+    #dataset = MultiModalDataset(args, config, args.test_annotation, args.test_zip_frames, data_index=None, test_mode=True)
 
     # # test
-    #data_index = range(25000)
-    #dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, data_index=data_index, test_mode=True)
+    data_index = range(25000)
+    dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, data_index=data_index, test_mode=True)
     batch_size = config["test_batch_size"]
     if rank == 0:
         print("数据量:", len(dataset))
@@ -65,12 +65,12 @@ def inference():
     if rank == 0:
         print(f"model_name:{ckpt_file}")
     model = TwoStreamModel(args, config)
-    # data = [torch.ones(batch_size, args.bert_seq_length, dtype=torch.int32),
-    #         torch.ones(batch_size, args.bert_seq_length, dtype=torch.int32),
-    #         torch.randn(batch_size, config["max_frames"], 3, 224, 224),
-    #         torch.ones(batch_size, config["max_frames"], dtype=torch.int32),
-    #         ]
-    # model = torch2trt(model, data, fp16_mode=True)
+    data = [torch.ones(batch_size, args.bert_seq_length, dtype=torch.int32),
+            torch.ones(batch_size, args.bert_seq_length, dtype=torch.int32),
+            torch.randn(batch_size, config["max_frames"], 3, 224, 224),
+            torch.ones(batch_size, config["max_frames"], dtype=torch.int32),
+            ]
+    model = torch2trt(model, data, fp16_mode=True)
 
     model.to(device)
     model = amp.initialize(model, opt_level="O1")
@@ -95,37 +95,23 @@ def inference():
             video_feature = batch["frame_input"].to(device, non_blocking=True)
             video_mask = batch['frame_mask'].to(device, non_blocking=True)
 
-            # label = batch["label"].to(device, non_blocking=True)
-            # labels.append(label.squeeze(dim=1))
-
             pred_label_id = torch.argmax(model(text_input_ids, text_mask, video_feature, video_mask), 1)
             predictions.append(pred_label_id)
-    # if rank == 0:
-    #     print(torch.cat(labels, dim=0))
-    # if rank == 1:
-    #     print(torch.cat(labels, dim=0))
+
     predictions = distributed_concat(torch.cat(predictions, dim=0), len(dataset))
     predictions = predictions.cpu().numpy()
 
-    # labels = distributed_concat(torch.cat(labels, dim=0), len(dataset))
-    # labels = labels.cpu().numpy()
-    # if rank == 0:
-    #     print(labels)
 
     if rank == 0:
         print("推理时长", time.time() - s_time)
         print("预测数据量", len(predictions))
         print(predictions)
         # 4. dump results
-
-        # raw_labels = []
         with open(args.test_output_csv, 'w') as f:
             for pred_label_id, ann in zip(predictions, dataset.anns):
                 video_id = ann['id']
-                # raw_labels.append(label)
                 category_id = lv2id_to_category_id(pred_label_id)
                 f.write(f'{video_id},{category_id}\n')
-        # print(raw_labels)
 
 
 if __name__ == '__main__':

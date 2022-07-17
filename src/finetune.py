@@ -197,7 +197,7 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
                 ema.apply_shadow()
 
             if val_dataloader is not None:
-                if epoch >= 3 and print_step % 500 == 0:
+                if epoch >= 100 and print_step % 500 == 0:
                     s_time = time.time()
                     loss, results, predictions, labels = validate(model, val_dataloader)
                     results = {k: round(v, 4) for k, v in results.items()}

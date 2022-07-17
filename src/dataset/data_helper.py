@@ -260,8 +260,8 @@ class MultiModalDataset(Dataset):
             tokenized_sentence = tokenized_sentence[:self.bert_seq_length-1]
 
         tokenized_sentence += ["[SEP]"] + ['[PAD]' for _ in range(self.bert_seq_length -1 - len(tokenized_sentence))]
-        #
-        #
+
+
         assert len(tokenized_sentence) == self.bert_seq_length
         input_ids = torch.tensor(self.tokenizer.convert_tokens_to_ids(tokenized_sentence), dtype=torch.long)
         attention_mask = torch.tensor([1 if tok != '[PAD]' else 0 for tok in tokenized_sentence], dtype=torch.long)

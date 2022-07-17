@@ -81,6 +81,7 @@ val_batch_size = 256
   DP8桢+bs256, 推理速度 242s
   apex+ap16, 8桢+bs256, 推理速度 129s， gpu 82%
   apex+ap16, 16桢+bs128, 推理速度 227s， gpu 82%
+
   apex+ap16, 32桢+bs64, 推理速度 415s， gpu 82%
   apex+ap16, 32桢+bs72, 推理速度 417s， gpu 90+
   apex+ap16, 32桢+bs80, 推理速度 415s， gpu 82%
@@ -94,8 +95,23 @@ val_batch_size = 256
  *************20220714*************
   ## vesion=1.0 8+32 no ema, DDP+DP
   # version=18.0 16+16, ema, ddpfp16, accumulate_step=2, lr不变， 3/10轮,线下0.6791 loss=1.271，线上0.672584
-  # version=19.0 8+32,
+  # version=19.0 8+32,  num_cross_layer=5 线下6712
+  # version=20.0 32+8  ema, ddpfp16, accumulate_step=4, lr不变， 3/10轮,线下0.6865 loss=1.270，线上
 
 # todo 推理时,去掉 log_softmax操作
+ *************20220715*************
+ 测试速度
+ apex+ap16, 32桢,   pin_memory=True,prefetch_factor=8,num_workers=4,bs=64，
+ 1. 速度417s, DP速度671s， 输出结果一致， 感觉可以DP训练，DDP+FP16推理
+ 2. num_workers=8 killed
 # todo
 # todo 视频+ocr(B*N形式)交互=>视频表示（Bs,768)  再与title,asr交互(BS,768), 在视频表示与文本表示交互, 改动较大
+
+ # version=21.0 8+32  ema, ddpfp16, swin-tiny-22k权重, 线下6865  loss=1.256, fp16推理速度=160s， 线上6764
+ # version=21.0 8+32  ema, DP 4轮/10轮 线下6925 loss=1.295， fp16推理, 速度=160s ；DP推理，速度=272s；
+
+ # version=22.0 8+32  ema, ddpfp16, swin_small_patch4_window7_224_22k.pth, 几乎满gpu 30074MiB，训练速度=95s,
+   线下6891  loss=1.226, fp16推理速度=211s， 线上, 去掉swin里面的mask速度190s, 线上0.682461
+
+ # version=23.0  8+16  ema, ddpfp16, swin_base, 线下6901 loss=1.224,
+ # version=24.0  8+16  ema, ddpfp16, swin_large, 满gpu 线下6979 loss=1.207,test_batch_size=128, 推理速度=362s，线上0.690396

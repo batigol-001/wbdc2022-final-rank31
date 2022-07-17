@@ -55,4 +55,18 @@ if __name__ == "__main__":
     print("cv:sum time:%.5f" % (end_time - start_time))
 
 
+import numpy as np
+import pandas as pd
+
+df1 = pd.read_csv("result.csv", index_col=False)
+df2 = pd.read_csv("result_1.csv", index_col=False)
+df1.columns = ["id", "pred1"]
+df2.columns = ["id", "pred2"]
+df = df1.merge(df2)
+print(df.loc[df.pred1!=df.pred2].shape[0] / len(df))
+
+
+
+
+
 
