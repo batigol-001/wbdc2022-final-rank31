@@ -157,8 +157,8 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
     # build model and optimizers
     model = TwoStreamModel(args, config)
 
-    for n, m in model.named_parameters():
-        args.logger.info(n)
+    for name, param in model.named_parameters():
+            print(name)
 
     pretrain_file = config["pretrain_file"]
     if pretrain_file and os.path.exists(pretrain_file):

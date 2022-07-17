@@ -107,6 +107,7 @@ val_batch_size = 256
 # todo
 # todo 视频+ocr(B*N形式)交互=>视频表示（Bs,768)  再与title,asr交互(BS,768), 在视频表示与文本表示交互, 改动较大
 
+ *************20220716-17*************
  # version=21.0 8+32  ema, ddpfp16, swin-tiny-22k权重, 线下6865  loss=1.256, fp16推理速度=160s， 线上6764
  # version=21.0 8+32  ema, DP 4轮/10轮 线下6925 loss=1.295， fp16推理, 速度=160s ；DP推理，速度=272s；
 
@@ -115,3 +116,11 @@ val_batch_size = 256
 
  # version=23.0  8+16  ema, ddpfp16, swin_base, 线下6901 loss=1.224,
  # version=24.0  8+16  ema, ddpfp16, swin_large, 满gpu 线下6979 loss=1.207,test_batch_size=128, 推理速度=362s，线上0.690396
+ # version=25.0  8+16  ema, ddpfp16, swin_large, 冻结swin层, 线下6837
+
+ # 24 swin-large 微调版本，保存
+ #version=26.0  swin微调版本,冻结swin层 6909 loss=1.339
+
+ # 安装
+      $ pip install nvidia-pyindex
+      $ pip install pytorch-quantization

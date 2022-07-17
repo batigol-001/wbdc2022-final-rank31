@@ -11,7 +11,7 @@ from utlils.category_id_map import CATEGORY_ID_LIST
 from third_party.masklm import MaskLM, MaskVideo, ShuffleVideo
 
 from third_party.lxrt import LXRTXLayer, BertLayer, BertLayerNorm
-from third_party.swin import swin
+from third_party.swin import  swin
 from third_party.vit import vit
 
 # 双流模型
@@ -36,7 +36,7 @@ class TwoStreamModel(nn.Module):
 
         self.video_encoder = swin(args.swin_pretrained_path)
 
-        self.video_proj_linear = nn.Sequential(nn.Dropout(0.2), nn.Linear(1024, 768))
+        self.video_proj_linear = nn.Sequential(nn.Dropout(0.2), nn.Linear(1536, 768))
 
         # self.video_gru = VideoGRU(frame_embedding_size)
 
@@ -78,7 +78,8 @@ class TwoStreamModel(nn.Module):
         # video_mask = inputs['frame_mask']
 
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
-        video_embeds = self.video_encoder(video_feature, video_mask)
+        with torch.no_grad():
+            video_embeds = self.video_encoder(video_feature)
         video_embeds = self.video_proj_linear(video_embeds)
         # 768 / 16 = 48 , 48 = 4*4*3
         # aug_video_embeds = video_embeds[:, :,np.array([list(range(idx*48, (idx+1)*48)) for idx in torch.randperm(16)]).reshape(-1)]

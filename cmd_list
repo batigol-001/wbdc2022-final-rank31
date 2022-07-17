@@ -28,7 +28,7 @@ sudo docker push tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:v7.0
 
 CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.launch --nproc_per_node=2     pretrain_DDP.py
 CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.launch --nproc_per_node=2     finetune_DDP.py
-CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.launch --nproc_per_node=2     inference_DDP.py --test_output_csv './result.csv'
+CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.launch --nproc_per_node=2     inference_DDP.py --test_output_csv './result_trt.csv'
     --nnodes=1 \
     --node_rank=0 \
     --master_addr=localhost \
@@ -41,3 +41,6 @@ python inference.py --test_annotation '/home/tione/notebook/demo_data/annotation
 
 
  pip install -v --no-cache-dir ./
+
+
+ onnx onnx-simplifier

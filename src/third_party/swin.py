@@ -274,7 +274,7 @@ class SwinTransformerBlock(nn.Module):
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, num_heads={self.num_heads}, " \
-               f"window_size={self.window_size}, shift_size={self.shift_size}, mlp_ratio={self.mlp_ratio}"
+            f"window_size={self.window_size}, shift_size={self.shift_size}, mlp_ratio={self.mlp_ratio}"
 
     def flops(self):
         flops = 0
@@ -573,31 +573,44 @@ class SwinTransformer(nn.Module):
         x = torch.flatten(x, 1)
         return x
 
-    def forward(self, x, mask):
+    def forward(self, x):
         if x.dim() == 5:
             # support multi-frame inputs
             B, N, C, H, W = x.shape
             x = x.view(B * N, C, H, W)
-            # # 处理 mask
-            # mask = mask.view(B * N, -1).squeeze(-1)
-            # x = x.permute(1, 2, 3, 0)
-            # x = x.masked_select(mask.bool()).view(C, H, W, -1).permute(3, 0, 1, 2)
-            # mask_not_zero_index = [i for i, v in enumerate(mask) if v != 0]
             output_shape = (B, N, -1)
-            x = x.view(*output_shape)
-            x = self.forward_features(x)
-            x = self.head(x)
-            # restore_x = torch.zeros(B * N, x.shape[-1])
-            # restore_x = restore_x.to(x.device)
-            # restore_x[mask_not_zero_index] = x
-            # restore_x = restore_x.view(*output_shape)
-            return x
         else:
             output_shape = (x.shape[0], -1)
-            x = self.forward_features(x)
-            x = self.head(x)
-            x = x.view(*output_shape)
-            return x
+        x = self.forward_features(x)
+        x = self.head(x)
+        x = x.view(*output_shape)
+        return x
+
+    # def forward(self, x, mask):
+    #     if x.dim() == 5:
+    #         # support multi-frame inputs
+    #         B, N, C, H, W = x.shape
+    #         x = x.view(B * N, C, H, W)
+    #         # # 处理 mask
+    #         # mask = mask.view(B * N, -1).squeeze(-1)
+    #         # x = x.permute(1, 2, 3, 0)
+    #         # x = x.masked_select(mask.bool()).view(C, H, W, -1).permute(3, 0, 1, 2)
+    #         # mask_not_zero_index = [i for i, v in enumerate(mask) if v != 0]
+    #         output_shape = (B, N, -1)
+    #         x = x.view(*output_shape)
+    #         x = self.forward_features(x)
+    #         x = self.head(x)
+    #         # restore_x = torch.zeros(B * N, x.shape[-1])
+    #         # restore_x = restore_x.to(x.device)
+    #         # restore_x[mask_not_zero_index] = x
+    #         # restore_x = restore_x.view(*output_shape)
+    #         return x
+    #     else:
+    #         output_shape = (x.shape[0], -1)
+    #         x = self.forward_features(x)
+    #         x = self.head(x)
+    #         x = x.view(*output_shape)
+    #         return x
 
     def flops(self):
         flops = 0
@@ -615,10 +628,41 @@ def swin(pretrained=None):
     # small,
     # model = SwinTransformer(img_size=224, num_classes=0, depths=[2, 2, 18, 2], drop_path_rate=0.2)
     # base
-    model = SwinTransformer(img_size=224, num_classes=0, embed_dim=128, depths=[2, 2, 18, 2], num_heads=[4, 8, 16, 32],
+    #     model = SwinTransformer(img_size=224, num_classes=0, embed_dim=128, depths=[2, 2, 18, 2], num_heads=[4, 8, 16, 32],
+    #                             drop_path_rate=0.2)
+
+    # large
+    model = SwinTransformer(img_size=224, num_classes=0, embed_dim=192, depths=[2, 2, 18, 2], num_heads=[6, 12, 24, 48],
                             drop_path_rate=0.2)
+
     if pretrained is not None:
         print("加载 swin 权重", pretrained)
         checkpoint = torch.load(pretrained, map_location='cpu')['model']
         model.load_state_dict(checkpoint, strict=False)
     return model
+
+
+# def load_swin_large():
+# model = SwinTransformer(img_size=224, num_classes=0, embed_dim=192, depths=[2, 2, 18, 2], num_heads=[6, 12, 24, 48],drop_path_rate=0.2)
+# ckpt_file = "../models/finetune/24.0/model_fold_1_best_score_0.6979.bin"
+# print("ckpt_file权重", ckpt_file)
+# checkpoint = torch.load(ckpt_file, map_location='cpu')["model_state_dict"]
+# import collections
+# new_checkpoint =  collections.OrderedDict()
+#
+# for k, v in checkpoint.items():
+#     if k.split(".")[0] == "video_encoder":
+#         new_k = ".".join(k.split(".")[1:])
+#         print(new_k)
+#         new_checkpoint[new_k] = v
+#
+# for k, v in new_checkpoint.items():
+#     print(k)
+# model.load_state_dict(new_checkpoint, strict=False)
+# print(model)
+# torch.save({"model":  model.state_dict()}, "swin_large_patch4_window7_224_22k_to_wx.pth")
+# pretrained = "swin_large_patch4_window7_224_22k_to_wx.pth"
+# checkpoint = torch.load(pretrained, map_location='cpu')['model']
+# model.load_state_dict(checkpoint, strict=False)
+
+
