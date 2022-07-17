@@ -121,7 +121,9 @@ val_batch_size = 256
  # 24 swin-large 微调版本，保存
  #version=26.0  swin微调版本,冻结swin层 6909 loss=1.339
 
- #version=27.0  swin_large+32帧+ bs=
+ #version=27.0  swin_large+32帧+ bs=4, 训练时间太长，epoch1=6495(v24.0: 6409)
  # 安装
       $ pip install nvidia-pyindex
       $ pip install pytorch-quantization
+
+ #version=28.0(基于24）  accumate_step=4
