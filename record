@@ -114,13 +114,14 @@ val_batch_size = 256
  # version=22.0 8+32  ema, ddpfp16, swin_small_patch4_window7_224_22k.pth, 几乎满gpu 30074MiB，训练速度=95s,
    线下6891  loss=1.226, fp16推理速度=211s， 线上, 去掉swin里面的mask速度190s, 线上0.682461
 
- # version=23.0  8+16  ema, ddpfp16, swin_base, 线下6901 loss=1.224,
+ # version=23.0  8+16  ema, ddpfp16, swin_base, 线下6901 loss=1.224,test_batch_size=128, 推理速度=239s，线上0.684276
  # version=24.0  8+16  ema, ddpfp16, swin_large, 满gpu 线下6979 loss=1.207,test_batch_size=128, 推理速度=362s，线上0.690396
  # version=25.0  8+16  ema, ddpfp16, swin_large, 冻结swin层, 线下6837
 
  # 24 swin-large 微调版本，保存
  #version=26.0  swin微调版本,冻结swin层 6909 loss=1.339
 
+ #version=27.0  swin_large+32帧+ bs=
  # 安装
       $ pip install nvidia-pyindex
       $ pip install pytorch-quantization
