@@ -27,6 +27,7 @@ from utlils.util import setup_device, setup_seed, build_optimizer, setup_logging
 from utlils.util import init_distributed_mode, get_rank, get_world_size, is_main_process
 from dataset.data_helper import MultiModalDataset
 from models.model_pretrain import TwoStreamModel
+from dataset.utils import distributed_concat, reduce_tensor
 
 import gc
 
@@ -85,7 +86,7 @@ def create_pretrain_dataloaders(args,  config, annotations, zip_frames):
         else:
             dataset = ConcatDataset([dataset, sub_dataset])
 
-    train_sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
+    train_sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True, seed=args.seed, drop_last=True)
     train_dataloader = dataloader_class(dataset,
                                     batch_size=config["train_batch_size"],
                                     sampler=train_sampler,
@@ -120,6 +121,8 @@ def train_worker(rank, local_rank, device,args, config):
     setps_per_epoch = len(train_dataloader)
     max_steps = epochs * setps_per_epoch
     num_warmup_steps = int(max_steps * config["warmup_ratio"])
+    config["print_steps"] = config["print_steps"] * config["accum_step"]
+
     if rank == 0:
         args.logger.info(f"total epochs: {epochs}")
         args.logger.info(f"total steps: {max_steps}")
@@ -135,10 +138,11 @@ def train_worker(rank, local_rank, device,args, config):
     #     args.logger.info(f"加载已经预训练过的模型, file= {exist_pretrain_file}")
     #     model.load_state_dict(torch.load(exist_pretrain_file), strict=False)
     optimizer = build_optimizer(config, model)
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=max_steps)
+    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps//config["accum_step"],
+                                                num_training_steps=max_steps//config["accum_step"])
 
     # 同步BN
-    # model = convert_syncbn_model(model)
+    model = convert_syncbn_model(model)
     model.to(device)
     # 混合精度
     model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
@@ -158,6 +162,7 @@ def train_worker(rank, local_rank, device,args, config):
         print_mlm_loss = 0.0
         print_ita_loss = 0.0
         print_itm_loss = 0.0
+
         train_dataloader.sampler.set_epoch(epoch)
 
         for i, batch in enumerate(train_dataloader):
@@ -167,7 +172,6 @@ def train_worker(rank, local_rank, device,args, config):
             text_mask = batch['text_attention_mask'].to(device, non_blocking=True)
             video_feature = batch["frame_input"].to(device, non_blocking=True)
             video_mask = batch['frame_mask'].to(device, non_blocking=True)
-            del batch
 
             if epoch > 1:
                 alpha = config['alpha']
@@ -175,27 +179,31 @@ def train_worker(rank, local_rank, device,args, config):
                 alpha =config['alpha'] * min(1, i / len(train_dataloader))
 
             loss, (mlm_loss,  ita_loss, itm_loss) = model(text_input_ids, text_mask, video_feature, video_mask, alpha)
-            # loss = loss.mean()
+            reduced_loss = reduce_tensor(loss.data)
+            reduced_mlm_loss = reduce_tensor(mlm_loss.data)
+            reduced_ita_loss = reduce_tensor(ita_loss.data)
+            reduced_itm_loss = reduce_tensor(itm_loss.data)
+
+            loss = loss / config["accum_step"]
             with amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
             #loss.backward()
-            loss = loss.mean()
-
-
-            optimizer.step()
-            scheduler.step()
-            optimizer.zero_grad()
 
             print_step += 1
 
-            print_loss += loss.item()
-            print_mlm_loss += mlm_loss.mean().item()
-            print_ita_loss += ita_loss.mean().item()
-            print_itm_loss += itm_loss.mean().item()
+            print_loss += reduced_loss.cpu().item()
+            print_mlm_loss += reduced_mlm_loss.cpu().item()
+            print_ita_loss += reduced_ita_loss.cpu().item()
+            print_itm_loss += reduced_itm_loss.cpu().item()
             if rank == 0 and print_step % config["print_steps"] == 0:
                 args.logger.info(f"Epoch {epoch} step [{print_step} / {setps_per_epoch}] : train total loss {print_loss/print_step:.5f}, "
                                  f"mlm_loss {print_mlm_loss/print_step:.5f}, ita_loss {print_ita_loss/print_step:.5f}, "
                                  f"itm_loss {print_itm_loss/print_step:.5f}.|| best_loss: {best_loss}.")
+
+            if print_step % config["accum_step"] == 0:
+                optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad()
 
         if rank == 0:
             args.logger.info(
@@ -232,7 +240,8 @@ def main():
     config["lr"] = float(config["lr"])
     config["other_lr"] = float(config["other_lr"])
     config["train_batch_size"] = config["train_batch_size"] // 2
-
+    if rank == 0:
+        print(f'lr={config["lr"]}, other_lr={config["other_lr"]}, train_batch_size={config["train_batch_size"]}')
 
     version = str(config["version"])
     log_path = os.path.join(args.log_path, "pretrain")

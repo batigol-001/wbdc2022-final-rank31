@@ -20,6 +20,10 @@ class TwoStreamModel(nn.Module):
         super(TwoStreamModel, self).__init__()
         bert_cfg = BertConfig.from_pretrained(args.bert_dir)
 
+        # new_config = {"hidden_dropout_prob": 0.3, "attention_probs_dropout_prob": 0.3}
+        # bert_cfg.update(new_config)
+        # print(bert_cfg)
+
         bert_hidden_size = bert_cfg.hidden_size
         self.vocab_size = bert_cfg.vocab_size
         self.num_classes = len(CATEGORY_ID_LIST)
@@ -78,8 +82,7 @@ class TwoStreamModel(nn.Module):
         # video_mask = inputs['frame_mask']
 
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
-        with torch.no_grad():
-            video_embeds = self.video_encoder(video_feature)
+        video_embeds = self.video_encoder(video_feature)
         video_embeds = self.video_proj_linear(video_embeds)
         # 768 / 16 = 48 , 48 = 4*4*3
         # aug_video_embeds = video_embeds[:, :,np.array([list(range(idx*48, (idx+1)*48)) for idx in torch.randperm(16)]).reshape(-1)]

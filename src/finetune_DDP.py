@@ -33,6 +33,7 @@ from dataset.utils import distributed_concat, reduce_tensor
 
 gc.enable()
 
+
 def validate(device, model, val_dataloader, nums):
     model.eval()
     predictions = []
@@ -45,18 +46,17 @@ def validate(device, model, val_dataloader, nums):
             text_mask = batch['text_attention_mask'].to(device)
             video_feature = batch["frame_input"].to(device)
             video_mask = batch['frame_mask'].to(device)
-            loss, _, pred_label_id, label = model(text_input_ids, text_mask, video_feature, video_mask, batch["label"].cuda(), 0.4)
-            loss = loss.mean()
-
+            loss, _, pred_label_id, label = model(text_input_ids, text_mask, video_feature, video_mask,
+                                                  batch["label"].cuda(), 0.4)
             predictions.append(pred_label_id)
             labels.append(label)
-            losses.append(loss.detach().cpu().numpy())
-            del batch
+            reduced_loss = reduce_tensor(loss.data)
+            losses.append(reduced_loss.cpu().item())
+
         loss = sum(losses) / len(losses)
 
         predictions = distributed_concat(torch.cat(predictions, dim=0), nums)
         predictions = predictions.cpu().numpy()
-
         labels = distributed_concat(torch.cat(labels, dim=0), nums)
         labels = labels.cpu().numpy()
         results = evaluate(predictions, labels)
@@ -157,8 +157,8 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
     # build model and optimizers
     model = TwoStreamModel(args, config)
 
-    for name, param in model.named_parameters():
-            print(name)
+    # for name, param in model.named_parameters():
+    #         print(name)
 
     pretrain_file = config["pretrain_file"]
     if pretrain_file and os.path.exists(pretrain_file):
@@ -201,6 +201,7 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
     #model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
     model = DistributedDataParallel(model, delay_allreduce=True)
 
+
     if args.use_ema:
         ema = EMA(model, 0.999)
         ema.register()
@@ -218,6 +219,8 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
         print_loss = 0.0
         ema_acc = 0.0
         print_step = 0
+
+        train_dataloader.sampler.set_epoch(epoch)
 
         for i, batch in enumerate(train_dataloader):
             model.train()
@@ -243,17 +246,15 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
             with amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
                 #torch.nn.utils.clip_grad_value_(amp.master_params(optimizer), config["max_grad_norm"])
-            # loss.backward()
 
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
             if args.use_adv == 1:
                 # 对抗训练
                 fgm.attack()  # 在embedding上添加对抗扰动
                 loss_adv,_, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, alpha)  # 这部分一定要注意model该传入的参数
-                loss_adv = loss_adv.mean()
-                loss_adv.backward()# 反向传播，并在正常的grad基础上，累加对抗训练的梯度
-                torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
-
+                loss_adv = loss_adv / config["accum_step"]
+                with amp.scale_loss(loss_adv, optimizer) as scaled_loss:
+                    scaled_loss.backward()# 反向传播，并在正常的grad基础上，累加对抗训练的梯度
+                #torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
                 fgm.restore()  # 恢复embedding参数
             elif args.use_adv == 2:
                 pgd.backup_grad()
@@ -264,14 +265,16 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
                     else:
                         pgd.restore_grad()
                     loss_adv,_, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, alpha)
-                    loss_adv = loss_adv.mean()
-                    loss_adv.backward()# 反向传播，并在正常的grad基础上，累加对抗训练的梯度
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
+                    loss_adv = loss_adv / config["accum_step"]
+                    with amp.scale_loss(loss_adv, optimizer) as scaled_loss:
+                        scaled_loss.backward()
+                    # 反向传播，并在正常的grad基础上，累加对抗训练的梯度
+                    #torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
                 pgd.restore()  # 恢复embedding参数
 
             print_step += 1
-            print_loss += reduced_loss.item()
-            ema_acc = 0.9 * ema_acc + 0.1 * reduced_accuracy.item()
+            print_loss += reduced_loss.cpu().item()
+            ema_acc = 0.9 * ema_acc + 0.1 * reduced_accuracy.cpu().item()
 
             if rank == 0 and print_step % config["print_steps"] == 0:
                 lr = optimizer.param_groups[0]['lr']

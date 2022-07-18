@@ -126,4 +126,5 @@ val_batch_size = 256
       $ pip install nvidia-pyindex
       $ pip install pytorch-quantization
 
- #version=28.0(基于24）  accumate_step=4
+ #version=28.0(基于24）  正则化（weight_decay: 0.02，dropout=0.3）， 效果一般
+ #version bug 未加train_dataloader.sampler.set_epoch(epoch);
