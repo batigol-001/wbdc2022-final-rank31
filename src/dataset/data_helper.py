@@ -92,7 +92,7 @@ class MultiModalDataset(Dataset):
                  test_mode: bool = False):
 
 
-        self.bert_seq_length = args.bert_seq_length
+        self.bert_seq_lenght = args.bert_seq_lenght
 
         self.max_frame = config["max_frames"]
         self.test_mode = test_mode
@@ -224,7 +224,7 @@ class MultiModalDataset(Dataset):
 
 
     def tokenize_text(self, text_dict):
-        max_seq_length = self.bert_seq_length - 4  # cls + sep * 3
+        max_seq_length = self.bert_seq_lenght - 4  # cls + sep * 3
         each_max_seq_length = max_seq_length // 3
 
         title = text_dict["title"]
@@ -256,13 +256,13 @@ class MultiModalDataset(Dataset):
         #                      + ['[PAD]' for _ in range(max_seq_length - final_total_sent)]
 
         tokenized_sentence = ["[CLS]"] + title_sentences + ["[SEP]"] + asr_sentences + ["[SEP]"] + ocr_sentences
-        if len(tokenized_sentence) > self.bert_seq_length - 1:
-            tokenized_sentence = tokenized_sentence[:self.bert_seq_length-1]
+        if len(tokenized_sentence) > self.bert_seq_lenght - 1:
+            tokenized_sentence = tokenized_sentence[:self.bert_seq_lenght-1]
 
-        tokenized_sentence += ["[SEP]"] + ['[PAD]' for _ in range(self.bert_seq_length -1 - len(tokenized_sentence))]
+        tokenized_sentence += ["[SEP]"] + ['[PAD]' for _ in range(self.bert_seq_lenght -1 - len(tokenized_sentence))]
 
 
-        assert len(tokenized_sentence) == self.bert_seq_length
+        assert len(tokenized_sentence) == self.bert_seq_lenght
         input_ids = torch.tensor(self.tokenizer.convert_tokens_to_ids(tokenized_sentence), dtype=torch.long)
         attention_mask = torch.tensor([1 if tok != '[PAD]' else 0 for tok in tokenized_sentence], dtype=torch.long)
 

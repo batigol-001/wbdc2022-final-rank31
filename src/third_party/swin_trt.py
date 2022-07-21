@@ -4,24 +4,42 @@
 # Licensed under The MIT License [see LICENSE for details]
 # Written by Ze Liu
 # --------------------------------------------------------
-# This is the official implementation from SwinTransformer
-# https://github.com/microsoft/Swin-Transformer
-# --------------------------------------------------------
 
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 
+try:
+    from pytorch_quantization import nn as quant_nn
+    from pytorch_quantization.nn.modules.tensor_quantizer import TensorQuantizer
+except ImportError:
+    raise ImportError(
+        "pytorch-quantization is not installed. Install from "
+        "https://github.com/NVIDIA/TensorRT/tree/master/tools/pytorch-quantization."
+    )
+
 
 class Mlp(nn.Module):
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0., quantize = False):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        self.fc1 = nn.Linear(in_features, hidden_features)
+        # Added the flag of quantization
+        self._quantize = quantize
+
+        if self._quantize:
+            self.fc1 = quant_nn.QuantLinear(in_features, hidden_features)
+        else:
+            self.fc1 = nn.Linear(in_features, hidden_features)
+
         self.act = act_layer()
-        self.fc2 = nn.Linear(hidden_features, out_features)
+
+        if self._quantize:
+            self.fc2 = quant_nn.QuantLinear(hidden_features, out_features)
+        else:
+            self.fc2 = nn.Linear(hidden_features, out_features)
+
         self.drop = nn.Dropout(drop)
 
     def forward(self, x):
@@ -79,7 +97,8 @@ class WindowAttention(nn.Module):
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
-    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0., input_resolution=0.):
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0., input_resolution=0,
+                 quantize = False,):
 
         super().__init__()
         self.dim = dim
@@ -105,10 +124,30 @@ class WindowAttention(nn.Module):
         relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
         relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
         self.register_buffer("relative_position_index", relative_position_index)
+        # Added the flag of quantization
+        self._quantize = quantize
 
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        if self._quantize:
+            self.qkv = quant_nn.QuantLinear(dim, dim * 3, bias=qkv_bias)
+        else:
+            self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)
+
+        if self._quantize:
+            self.proj = quant_nn.QuantLinear(dim, dim)
+        else:
+            self.proj = nn.Linear(dim, dim)
+
+        if self._quantize:
+            self.matmul_q_input_quantizer = TensorQuantizer(quant_nn.QuantLinear.default_quant_desc_input)
+            self.matmul_k_input_quantizer = TensorQuantizer(quant_nn.QuantLinear.default_quant_desc_input)
+            self.matmul_v_input_quantizer = TensorQuantizer(quant_nn.QuantLinear.default_quant_desc_input)
+            self.matmul_a_input_quantizer = TensorQuantizer(quant_nn.QuantLinear.default_quant_desc_input)
+
+            # No impact to the speed of quantized model, comment the quantizer
+            # self.pos_input_quantizer = TensorQuantizer(quant_nn.QuantLinear.default_quant_desc_input)
+
         self.proj_drop = nn.Dropout(proj_drop)
 
         trunc_normal_(self.relative_position_bias_table, std=.02)
@@ -122,27 +161,44 @@ class WindowAttention(nn.Module):
         """
         B_, N, C = x.shape
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
-        q = q * self.scale
+        if self._quantize:
+            q, k, v = qkv[0], \
+                      self.matmul_k_input_quantizer(qkv[1]), \
+                      self.matmul_v_input_quantizer(qkv[2])  # make torchscript happy (cannot use tensor as tuple)
+
+            q = self.matmul_q_input_quantizer(q * self.scale)
+        else:
+            q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+            q = q * self.scale
+
         attn = (q @ k.transpose(-2, -1))
 
         relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
             self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
         relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+
+        ## No impact to the speed of quantized model, comment it
+        # if self._quantize:
+        #     attn = attn + self.pos_input_quantizer(relative_position_bias.unsqueeze(0))
+        # else:
+        #     attn = attn + relative_position_bias.unsqueeze(0)
         attn = attn + relative_position_bias.unsqueeze(0)
 
         if mask is not None:
-            nW = int(self.input_resolution[0] * self.input_resolution[1] / self.window_size[0] / self.window_size[1])
-            # nW = mask.shape[0]
-            # print('nW: ', nW)
+            nW = int(self.input_resolution[0]*self.input_resolution[1]/self.window_size[0]/self.window_size[1])
+            #nW = mask.shape[0]
+            #print('nW: ', nW)
             attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
             attn = attn.view(-1, self.num_heads, N, N)
             attn = self.softmax(attn)
         else:
             attn = self.softmax(attn)
 
-        attn = self.attn_drop(attn)
+        if self._quantize:
+            attn = self.matmul_a_input_quantizer(self.attn_drop(attn))
+        else:
+            attn = self.attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
         x = self.proj(x)
@@ -187,7 +243,7 @@ class SwinTransformerBlock(nn.Module):
 
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, quantize=False):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -204,12 +260,14 @@ class SwinTransformerBlock(nn.Module):
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention(
             dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
-            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop, input_resolution=input_resolution)
+            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
+            input_resolution = self.input_resolution, quantize=quantize)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop,
+                       quantize=quantize)
 
         if self.shift_size > 0:
             # calculate attention mask for SW-MSA
@@ -235,6 +293,12 @@ class SwinTransformerBlock(nn.Module):
             attn_mask = None
 
         self.register_buffer("attn_mask", attn_mask)
+        # Added the flag of quantization
+        self._quantize = quantize
+        if self._quantize:
+            self.shortcut_input_quantizer = TensorQuantizer(quant_nn.QuantLinear.default_quant_desc_input)
+            self.drop_path_input_quantizer = TensorQuantizer(quant_nn.QuantLinear.default_quant_desc_input)
+            self.drop_path_2_input_quantizer = TensorQuantizer(quant_nn.QuantLinear.default_quant_desc_input)
 
     def forward(self, x):
         H, W = self.input_resolution
@@ -270,14 +334,18 @@ class SwinTransformerBlock(nn.Module):
         x = x.view(B, H * W, C)
 
         # FFN
-        x = shortcut + self.drop_path(x)
-        x = x + self.drop_path(self.mlp(self.norm2(x)))
+        if self._quantize:
+            x = self.shortcut_input_quantizer(shortcut) + self.drop_path_input_quantizer(self.drop_path(x))
+            x = x + self.drop_path_2_input_quantizer(self.drop_path(self.mlp(self.norm2(x))))
+        else:
+            x = shortcut + self.drop_path(x)
+            x = x + self.drop_path(self.mlp(self.norm2(x)))
 
         return x
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, num_heads={self.num_heads}, " \
-            f"window_size={self.window_size}, shift_size={self.shift_size}, mlp_ratio={self.mlp_ratio}"
+               f"window_size={self.window_size}, shift_size={self.shift_size}, mlp_ratio={self.mlp_ratio}"
 
     def flops(self):
         flops = 0
@@ -303,11 +371,16 @@ class PatchMerging(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, input_resolution, dim, norm_layer=nn.LayerNorm):
+    def __init__(self, input_resolution, dim, norm_layer=nn.LayerNorm, quantize = False):
         super().__init__()
         self.input_resolution = input_resolution
         self.dim = dim
-        self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
+        # Added the flag of quantization
+        self._quantize = quantize
+        if self._quantize:
+            self.reduction = quant_nn.QuantLinear(4 * dim, 2 * dim, bias=False)
+        else:
+            self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
         self.norm = norm_layer(4 * dim)
 
     def forward(self, x):
@@ -365,7 +438,8 @@ class BasicLayer(nn.Module):
 
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False):
+                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
+                 quantize=False):
 
         super().__init__()
         self.dim = dim
@@ -382,12 +456,13 @@ class BasicLayer(nn.Module):
                                  qkv_bias=qkv_bias, qk_scale=qk_scale,
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                 norm_layer=norm_layer)
+                                 norm_layer=norm_layer,
+                                 quantize=quantize)
             for i in range(depth)])
 
         # patch merging layer
         if downsample is not None:
-            self.downsample = downsample(input_resolution, dim=dim, norm_layer=norm_layer)
+            self.downsample = downsample(input_resolution, dim=dim, norm_layer=norm_layer, quantize=quantize)
         else:
             self.downsample = None
 
@@ -492,7 +567,7 @@ class SwinTransformer(nn.Module):
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
-                 use_checkpoint=False, **kwargs):
+                 use_checkpoint=False, quantize=False, **kwargs):
         super().__init__()
 
         self.num_classes = num_classes
@@ -536,7 +611,8 @@ class SwinTransformer(nn.Module):
                                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                                norm_layer=norm_layer,
                                downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
-                               use_checkpoint=use_checkpoint)
+                               use_checkpoint=use_checkpoint,
+                               quantize=quantize)
             self.layers.append(layer)
 
         self.norm = norm_layer(self.num_features)
@@ -589,32 +665,6 @@ class SwinTransformer(nn.Module):
         x = x.view(*output_shape)
         return x
 
-    # def forward(self, x, mask):
-    #     if x.dim() == 5:
-    #         # support multi-frame inputs
-    #         B, N, C, H, W = x.shape
-    #         x = x.view(B * N, C, H, W)
-    #         # # 处理 mask
-    #         # mask = mask.view(B * N, -1).squeeze(-1)
-    #         # x = x.permute(1, 2, 3, 0)
-    #         # x = x.masked_select(mask.bool()).view(C, H, W, -1).permute(3, 0, 1, 2)
-    #         # mask_not_zero_index = [i for i, v in enumerate(mask) if v != 0]
-    #         output_shape = (B, N, -1)
-    #         x = x.view(*output_shape)
-    #         x = self.forward_features(x)
-    #         x = self.head(x)
-    #         # restore_x = torch.zeros(B * N, x.shape[-1])
-    #         # restore_x = restore_x.to(x.device)
-    #         # restore_x[mask_not_zero_index] = x
-    #         # restore_x = restore_x.view(*output_shape)
-    #         return x
-    #     else:
-    #         output_shape = (x.shape[0], -1)
-    #         x = self.forward_features(x)
-    #         x = self.head(x)
-    #         x = x.view(*output_shape)
-    #         return x
-
     def flops(self):
         flops = 0
         flops += self.patch_embed.flops()
@@ -623,6 +673,7 @@ class SwinTransformer(nn.Module):
         flops += self.num_features * self.patches_resolution[0] * self.patches_resolution[1] // (2 ** self.num_layers)
         flops += self.num_features * self.num_classes
         return flops
+
 
 
 def swin(pretrained=None):
@@ -636,7 +687,7 @@ def swin(pretrained=None):
 
     # large
     model = SwinTransformer(img_size=224, num_classes=0, embed_dim=192, depths=[2, 2, 18, 2], num_heads=[6, 12, 24, 48],
-                             drop_rate=0.1)
+                            drop_path_rate=0.2)
 
     if pretrained is not None:
         print("加载 swin 权重", pretrained)
@@ -667,5 +718,4 @@ def swin(pretrained=None):
 # pretrained = "swin_large_patch4_window7_224_22k_to_wx.pth"
 # checkpoint = torch.load(pretrained, map_location='cpu')['model']
 # model.load_state_dict(checkpoint, strict=False)
-
 

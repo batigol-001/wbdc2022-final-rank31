@@ -1,7 +1,8 @@
 import sys
 import math
-import  torch
+import torch
 import torch.nn as nn
+
 
 def gelu(x):
     """Implementation of the gelu activation function.
@@ -18,6 +19,7 @@ class GeLU(nn.Module):
         0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
         Also see https://arxiv.org/abs/1606.08415
     """
+
     def __init__(self):
         super().__init__()
 
@@ -33,6 +35,7 @@ ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
 
 BertLayerNorm = torch.nn.LayerNorm
 
+
 class BertAttention(nn.Module):
     def __init__(self, config, ctx_dim=None):
         super().__init__()
@@ -46,7 +49,7 @@ class BertAttention(nn.Module):
 
         # visual_dim = 2048
         if ctx_dim is None:
-            ctx_dim =config.hidden_size
+            ctx_dim = config.hidden_size
         self.query = nn.Linear(config.hidden_size, self.all_head_size)
         self.key = nn.Linear(ctx_dim, self.all_head_size)
         self.value = nn.Linear(ctx_dim, self.all_head_size)
@@ -169,6 +172,7 @@ class BertLayer(nn.Module):
         layer_output = self.output(intermediate_output, attention_output)
         return layer_output
 
+
 class LXRTXLayer(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -208,14 +212,17 @@ class LXRTXLayer(nn.Module):
         return lang_output, visn_output
 
     def forward(self, lang_feats, lang_attention_mask,
-                      visn_feats, visn_attention_mask):
+                visn_feats, visn_attention_mask):
         lang_att_output = lang_feats
         visn_att_output = visn_feats
 
         lang_att_output, visn_att_output = self.cross_att(lang_att_output, lang_attention_mask,
                                                           visn_att_output, visn_attention_mask)
+
         lang_att_output, visn_att_output = self.self_att(lang_att_output, lang_attention_mask,
                                                          visn_att_output, visn_attention_mask)
+
+
         lang_output, visn_output = self.output_fc(lang_att_output, visn_att_output)
 
         return lang_output, visn_output

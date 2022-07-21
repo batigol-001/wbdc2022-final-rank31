@@ -79,7 +79,7 @@ def create_pretrain_dataloaders(args,  config, annotations, zip_frames):
     dataset = None
     for idx, (_annotation, _zip_feat) in enumerate(zip(annotations, zip_frames)):
 
-        # index = list(range(5000))
+        # index = list(range(500))
         sub_dataset = MultiModalDataset(args, config, _annotation, _zip_feat, None, test_mode=True)
         if idx == 0:
             dataset = sub_dataset
@@ -133,29 +133,43 @@ def train_worker(rank, local_rank, device,args, config):
     # for n, m in model.named_parameters():
     #     print(n)
 
-    # exist_pretrain_file = "/root/autodl-nas/pretrain/1.0/pretrain_model_epoch_10.bin"
-    # if os.path.exists(exist_pretrain_file):
-    #     args.logger.info(f"加载已经预训练过的模型, file= {exist_pretrain_file}")
-    #     model.load_state_dict(torch.load(exist_pretrain_file), strict=False)
+
     optimizer = build_optimizer(config, model)
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps//config["accum_step"],
                                                 num_training_steps=max_steps//config["accum_step"])
+
+
+
 
     # 同步BN
     model = convert_syncbn_model(model)
     model.to(device)
     # 混合精度
     model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
-    # for state in optimizer.state.values():
-    #     for k, v in state.items():
-    #         if isinstance(v, torch.Tensor):
-    #             state[k] = v.cuda()
 
-    #DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
-    model = DistributedDataParallel(model, delay_allreduce=True)# device_ids=[local_rank], output_device=local_rank)
 
-    best_loss = 1000
-    for epoch in range(1, epochs+1):
+    exist_pretrain_file = ""
+    if os.path.exists(exist_pretrain_file):
+        args.logger.info(f"加载已经预训练过的模型, file= {exist_pretrain_file}")
+        checkpoint = torch.load(exist_pretrain_file, map_location='cpu')
+        model.load_state_dict(checkpoint["model_state_dict"], strict=False)
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        amp.load_state_dict(checkpoint['amp_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        #     for state in optimizer.state.values():
+        #         for k, v in state.items():
+        #             if isinstance(v, torch.Tensor):
+        #                 state[k] = v.cuda()
+    else:
+        start_epoch = 1
+
+        # DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
+    model = DistributedDataParallel(model, delay_allreduce=True)  # device_ids=[local_rank], output_device=local_rank)
+
+    args.logger.info(f" start_epoch  = {start_epoch}")
+    dist.barrier()
+    for epoch in range(start_epoch, epochs+1):
         start_time = time.time()
         print_loss = 0.0
         print_step = 0
@@ -196,9 +210,10 @@ def train_worker(rank, local_rank, device,args, config):
             print_ita_loss += reduced_ita_loss.cpu().item()
             print_itm_loss += reduced_itm_loss.cpu().item()
             if rank == 0 and print_step % config["print_steps"] == 0:
+                lr = optimizer.param_groups[0]['lr']
                 args.logger.info(f"Epoch {epoch} step [{print_step} / {setps_per_epoch}] : train total loss {print_loss/print_step:.5f}, "
                                  f"mlm_loss {print_mlm_loss/print_step:.5f}, ita_loss {print_ita_loss/print_step:.5f}, "
-                                 f"itm_loss {print_itm_loss/print_step:.5f}.|| best_loss: {best_loss}.")
+                                 f"itm_loss {print_itm_loss/print_step:.5f}.|| lr: {lr}.")
 
             if print_step % config["accum_step"] == 0:
                 optimizer.step()
@@ -206,15 +221,21 @@ def train_worker(rank, local_rank, device,args, config):
                 optimizer.zero_grad()
 
         if rank == 0:
+            lr = optimizer.param_groups[0]['lr']
             args.logger.info(
             f"Epoch {epoch} step [{print_step} / {setps_per_epoch}] : train total loss {print_loss / print_step:.5f}, "
             f"mlm_loss {print_mlm_loss / print_step:.5f}, ita_loss {print_ita_loss / print_step:.5f}, "
-            f"itm_loss {print_itm_loss / print_step:.5f}.|| best_loss: {best_loss} .")
+            f"itm_loss {print_itm_loss / print_step:.5f}.|| lr: {lr} .")
 
 
             save_file = f'{args.pretrain_path}/pretrain_model_epoch_{epoch}.bin'
             model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
-            torch.save(model_save, save_file)
+            # torch.save(model_save, save_file)
+            torch.save({"model_state_dict": model_save,
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "scheduler_state_dict": scheduler.state_dict(),
+                        "amp_state_dict": amp.state_dict(),
+                        "epoch": epoch}, save_file)
             args.logger.info(f"save mode to file {save_file}")
 
 

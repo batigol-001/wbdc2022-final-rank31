@@ -10,7 +10,7 @@ from utlils.category_id_map import CATEGORY_ID_LIST
 from third_party.masklm import MaskLM
 
 from third_party.lxrt import LXRTXLayer, BertLayerNorm
-from third_party.swin import swin_tiny
+from third_party.swin import swin
 
 
 # 双流模型
@@ -32,8 +32,9 @@ class TwoStreamModel(nn.Module):
         self.cross_layers_num = config["cross_layers_num"]
 
         self.text_encoder = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=True)
-        #self.video_encoder = VisualFeatEncoder(bert_cfg, frame_embedding_size)
-        self.video_encoder = swin_tiny(args.swin_pretrained_path)
+
+        self.video_encoder = swin(args.swin_pretrained_path)
+        self.video_proj_linear = nn.Linear(frame_embedding_size, bert_hidden_size)
 
         self.cross_layers = nn.ModuleList(
             [LXRTXLayer(bert_cfg) for _ in range(self.cross_layers_num)]
@@ -42,7 +43,7 @@ class TwoStreamModel(nn.Module):
         # 温度参数
         self.temp = nn.Parameter(torch.ones([]) * temp)
 
-        self.vision_proj = nn.Linear(bert_hidden_size, embed_dim)
+        self.video_proj = nn.Linear(bert_hidden_size, embed_dim)
         self.text_proj = nn.Linear(bert_hidden_size, embed_dim)
         self.mlm_head = BertOnlyMLMHead(bert_cfg)
 
@@ -52,17 +53,20 @@ class TwoStreamModel(nn.Module):
 
         # 创建动量模型
         self.text_encoder_m = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=True)
-        self.video_encoder_m = swin_tiny(args.swin_pretrained_path)#self.video_encoder_m = VisualFeatEncoder(bert_cfg, frame_embedding_size)
+        self.video_encoder_m = swin(args.swin_pretrained_path)
+        self.video_proj_linear_m = nn.Linear(frame_embedding_size, bert_hidden_size)
+
         self.cross_layers_m = nn.ModuleList(
             [LXRTXLayer(bert_cfg) for _ in range(self.cross_layers_num)]
         )
 
-        self.vision_proj_m = nn.Linear(bert_hidden_size, embed_dim)
+        self.video_proj_m = nn.Linear(bert_hidden_size, embed_dim)
         self.text_proj_m = nn.Linear(bert_hidden_size, embed_dim)
         self.mlm_head_m = BertOnlyMLMHead(bert_cfg)
 
         self.model_pairs = [[self.video_encoder, self.video_encoder_m],
-                            [self.vision_proj, self.vision_proj_m],
+                            [self.video_proj_linear, self.video_proj_linear_m],
+                            [self.video_proj, self.video_proj_m],
                             [self.text_encoder, self.text_encoder_m],
                             [self.text_proj, self.text_proj_m],
                             [self.cross_layers, self.cross_layers_m],
@@ -82,26 +86,25 @@ class TwoStreamModel(nn.Module):
 
     def forward(self,  text_input_ids, text_mask, video_feature, video_mask, alpha=0):
 
-        # text_input_ids = inputs['text_input_ids']
-        # text_mask = inputs['text_attention_mask']
-        # video_feature = inputs["frame_input"]
-        # video_mask = inputs['frame_mask']
-
         with torch.no_grad():
             self.temp.clamp_(0.001, 0.5)
 
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
         video_embeds = self.video_encoder(video_feature)
+        video_embeds = self.video_proj_linear(video_embeds)
+
         text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
         # feat 768-> 256 映射到低维空间， 视频取mean_pooling, 文本取[cls]
-        video_feat = F.normalize(self.vision_proj(video_embeds.mean(1)), dim=-1)
+        video_feat = F.normalize(self.video_proj(video_embeds.mean(1)), dim=-1)
         text_feat = F.normalize(self.text_proj(text_embeds[:, 0, :]), dim=-1)
 
         # 动量编码器
         with torch.no_grad():
             self._momentum_update()
             video_embeds_m = self.video_encoder_m(video_feature)
-            video_feat_m = F.normalize(self.vision_proj_m(video_embeds_m.mean(1)), dim=-1)
+            video_embeds_m = self.video_proj_linear_m(video_embeds_m)
+
+            video_feat_m = F.normalize(self.video_proj_m(video_embeds_m.mean(1)), dim=-1)
             # 合并队列
             video_feat_all = torch.cat([video_feat_m.t(), self.video_queue.clone().detach()], dim=1)
 

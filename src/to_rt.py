@@ -17,23 +17,26 @@ from models.model import TwoStreamModel
 
 args = parse_args()
 config = yaml.load(open("configs/Finetune.yaml", 'r'), Loader=yaml.Loader)
-batch_size = config["test_batch_size"]
+batch_size = 2#config["test_batch_size"]
 ckpt_file = args.ckpt_file
 print(f"model_name:{ckpt_file}")
 
 model = TwoStreamModel(args, config)
 checkpoint = torch.load(ckpt_file, map_location='cpu')
 model.load_state_dict(checkpoint['model_state_dict'])
+
 model.eval()
 
-data = (torch.ones(batch_size, args.bert_seq_length, dtype=torch.int32),
-        torch.ones(batch_size, args.bert_seq_length, dtype=torch.int32),
-        torch.randn(batch_size, config["max_frames"], 3, 224, 224),
-        torch.ones(batch_size, config["max_frames"], dtype=torch.int32),
-        )
+text_input_ids = torch.zeros(batch_size//2, args.bert_seq_lenght, dtype=torch.long)
+text_mask = torch.zeros(batch_size//2, args.bert_seq_lenght, dtype=torch.long)
+video_feature = torch.zeros(batch_size//2, config["max_frames"], 3, 224, 224, dtype=torch.float32)
+video_mask = torch.zeros(batch_size//2, config["max_frames"], dtype=torch.long)
+input_names = ["text_input_ids", "text_mask", "video_feature", "video_mask"]
+output_names = ["predictions"]
 
-torch.onnx.export(model, data, 'model.onnx', verbose=False, opset_version=12, input_names=["input_0"],
-                  output_names=["output_0"],
+
+torch.onnx.export(model, (text_input_ids, text_mask, video_feature, video_mask), 'model.onnx', verbose=False, input_names=input_names,
+                  output_names=output_names,
                   do_constant_folding=True)
 
 

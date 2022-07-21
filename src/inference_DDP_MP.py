@@ -25,9 +25,51 @@ import torch.backends.cudnn as cudnn
 
 from dataset.utils import distributed_concat, SequentialDistributedSampler
 
+import multiprocessing as mp
+from multiprocessing import Queue, Process
+
 
 # from torch2trt import torch2trt
 
+class MultiProcessInference(object):
+    def __init__(self, dataloader, model, device):
+        self.dataloader = dataloader
+        self.model = model
+        self.device = device
+
+        self.batch_queue = None
+        self.device_queue = None
+        self.predictions = []
+        self.n = 0
+
+    def get_dataloader_thread(self):
+        while True:
+            if self.batch_queue is None and self.n <= len(self.dataloader):
+                self.batch_queue = self.dataloader.next()
+
+    def to_device_thread(self):
+        while True:
+            if self.batch_queue is not None and self.device_queue is None and self.n <= len(self.dataloader):
+                text_input_ids = self.batch_queue['text_input_ids'].to(self.device, non_blocking=True)
+                text_mask = self.batch_queue['text_attention_mask'].to(self.device, non_blocking=True)
+                video_feature = self.batch_queue["frame_input"].to(self.device, non_blocking=True)
+                video_mask = self.batch_queue['frame_mask'].to(self.device, non_blocking=True)
+                self.device_queue = {"text_input_ids": text_input_ids, "text_mask": text_mask,
+                       "video_feature": video_feature, "video_mask": video_mask}
+                self.batch_queue = None
+
+    def inference_thread(self):
+        while True:
+            if self.device_queue is not None and self.n <= len(self.dataloader):
+                text_input_ids = self.device_queue['text_input_ids']
+                text_mask = self.device_queue['text_attention_mask']
+                video_feature = self.device_queue["frame_input"]
+                video_mask = self.device_queue['frame_mask']
+                with torch.no_grad():
+                    pred_label_id = torch.argmax(self.model(text_input_ids, text_mask, video_feature, video_mask), 1)
+                    self.predictions.append(pred_label_id)
+                    self.device_queue = None
+                    self.n +=1
 
 def inference():
     # 0. set up distributed device
@@ -83,27 +125,28 @@ def inference():
     # model = torch.nn.parallel.DataParallel(model.cuda())
     model = DistributedDataParallel(model, delay_allreduce=True)
     model.eval()
-    with torch.no_grad():
-        for i, batch in enumerate(dataloader):
-            text_input_ids = batch['text_input_ids'].to(device, non_blocking=True)
-            text_mask = batch['text_attention_mask'].to(device, non_blocking=True)
-            video_feature = batch["frame_input"].to(device, non_blocking=True)
-            video_mask = batch['frame_mask'].to(device, non_blocking=True)
+
+    mp.set_start_method('spawn')
+    multiInfer = MultiProcessInference(dataloader, model, device)
+
+    n = len(dataloader)
+
+    batch_process= Process(target=multiInfer.get_dataloader_thread)
+    device_process= Process(target=multiInfer.to_device_thread)
+    infer_process= Process(target=multiInfer.inference_thread)
+    batch_process.start()
+    device_process.start()
+    infer_process.start()
+    time.sleep(1)#等待进程启动
+    while True:
+        if (n == multiInfer.n):
+            batch_process.terminate()
+            device_process.terminate()
+            infer_process.terminate()
+            print('all process over!')
             break
-    # 3. inference
-    predictions = []
-    s_time = time.time()
-    with torch.no_grad():
-        for _ in range(len(dataloader)):
-            # text_input_ids = batch['text_input_ids'].to(device, non_blocking=True)
-            # text_mask = batch['text_attention_mask'].to(device, non_blocking=True)
-            # video_feature = batch["frame_input"].to(device, non_blocking=True)
-            # video_mask = batch['frame_mask'].to(device, non_blocking=True)
 
-            pred_label_id = torch.argmax(model(text_input_ids, text_mask, video_feature, video_mask), 1)
-            predictions.append(pred_label_id)
-
-    predictions = distributed_concat(torch.cat(predictions, dim=0), len(dataset))
+    predictions = distributed_concat(torch.cat(multiInfer.predictions, dim=0), len(dataset))
     predictions = predictions.cpu().numpy()
 
     if rank == 0:

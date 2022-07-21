@@ -126,6 +126,25 @@ val_batch_size = 256
       $ pip install nvidia-pyindex
       $ pip install pytorch-quantization
 
+ *************20220718-19*************
  #version=28.0(基于24）  正则化（weight_decay: 0.02，dropout=0.3）， 效果一般
  #version bug 加train_dataloader.sampler.set_epoch(epoch); 线下7009(+3k)，loss=1.168，线上0.695235，线上推理363s
- # 重跑base version=23 线下6946 loass=1.265，线上
+
+ #重跑base version=23 线下6946 loass=1.265，线上0.6907,
+   #继续vedio_proj dropout去掉, 线下0.6960 loss=1.173,
+   #去掉cls_linear前的dropout, 线下0.6996(+5k) loss =1.154, 线上0.692376(+1.6K)，线上推理速度=239s
+   #加text_proj_linear层0.6969 loss=1.155 不行
+ # 优化图片读出, to_tensor, norimal 可以在GPU做, test测试1000个图片速度下降28s->19s,68%
+   # 测试速度0. =239s
+   # 测试速度1. =241s, 分段tensor
+   # 测试速度2. =235s
+
+ # version=29 基于23, 调整架构 cross_layers=1, 线下6998，loss=1.147, 线上692648，233s
+ #version=30 基于23, 调整架构 cross_layers=3+ADD loss=7002, loss=1.161， 线上693094；dockerv13;
+   # docker v14 test datahelper 跟train一致，4.4%结果不一致， 线上622998
+   # 测试速度 加载数据时间80s,GPU满的，CPU不是瓶颈
+  -- #version=31基于23, 调整架构 cross_layers=6+ADD
+
+  # version=32 FGM base(基于30)， 线下7015,loss=1.123 线上0.697992(+5K)
+  # verison=33 no ema 4轮 6641
+  # version=34 mean

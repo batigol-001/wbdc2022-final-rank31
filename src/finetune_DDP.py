@@ -166,26 +166,12 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
         model.load_state_dict(torch.load(pretrain_file, map_location='cpu'), strict=False)
 
 
+
     optimizer = build_optimizer(config, model)
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps//config["accum_step"],
                                                 num_training_steps=max_steps//config["accum_step"])
     start_epoch = 1
 
-    # if config['resume'] != "" and os.path.exists(config['resume']):
-    #     # 加载之前训练过的模型
-    #     args.logger.warning(f"loading model and params from {config['resume']}")
-    #     checkpoint = torch.load(config['resume'], map_location='cpu')
-    #     model.load_state_dict(checkpoint['model_state_dict'])
-    #     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    #     for state in optimizer.state.values():
-    #         for k, v in state.items():
-    #             if isinstance(v, torch.Tensor):
-    #                 state[k] = v.cuda()
-    #
-    #     scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-    #     start_epoch = checkpoint['epoch'] + 1
-
-    # args.logger.info(f" start_epoch  = {start_epoch}")
 
     # 同步BN
     model = convert_syncbn_model(model)
@@ -213,6 +199,7 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
         pgd = PGD(model, emb_name='word_embeddings.', epsilon=1.0, alpha=0.3)
         K = 3
     #  training
+    dist.barrier()
     best_score = 0.0
     for epoch in range(start_epoch, epochs+1):
         start_time = time.time()
@@ -250,7 +237,7 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
             if args.use_adv == 1:
                 # 对抗训练
                 fgm.attack()  # 在embedding上添加对抗扰动
-                loss_adv,_, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, alpha)  # 这部分一定要注意model该传入的参数
+                loss_adv,_, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, labels, alpha)  # 这部分一定要注意model该传入的参数
                 loss_adv = loss_adv / config["accum_step"]
                 with amp.scale_loss(loss_adv, optimizer) as scaled_loss:
                     scaled_loss.backward()# 反向传播，并在正常的grad基础上，累加对抗训练的梯度
@@ -264,7 +251,7 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
                         model.zero_grad()
                     else:
                         pgd.restore_grad()
-                    loss_adv,_, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, alpha)
+                    loss_adv,_, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, labels, alpha)
                     loss_adv = loss_adv / config["accum_step"]
                     with amp.scale_loss(loss_adv, optimizer) as scaled_loss:
                         scaled_loss.backward()
@@ -328,6 +315,7 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
         if args.use_ema:
             ema.apply_shadow()
 
+        dist.barrier()
         if val_dataloader is not None:
             s_time = time.time()
             loss, results, predictions, labels = validate(device, model, val_dataloader, len(val_index))

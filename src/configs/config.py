@@ -6,6 +6,11 @@ def parse_args():
 
     parser.add_argument("--seed", type=int, default=42, help="random seed.")
     # ========================= Data Configs ==========================
+
+    parser.add_argument('--unlabeled_annotation', type=str, default='/home/tione/notebook/data/annotations/unlabeled.json')
+    parser.add_argument('--unlabeled_zip_frames', type=str, default='/home/tione/notebook/data/zip_frames/unlabeled/')
+
+
     parser.add_argument('--train_annotation', type=str, default='/home/tione/notebook/data/annotations/labeled.json')
     parser.add_argument('--train_zip_frames', type=str, default='/home/tione/notebook/data/zip_frames/labeled/')
 
@@ -34,26 +39,7 @@ def parse_args():
     parser.add_argument('--num_workers', default=2, type=int, help="num_workers for dataloaders")
 
     # DDP
-    parser.add_argument(
-        "--nodes", default=1, type=int, help="number of nodes for distributed training"
-    )
-    parser.add_argument(
-        "--ngpus_per_node",
-        default=2,
-        type=int,
-        help="number of GPUs per node for distributed training",
-    )
-    parser.add_argument(
-        "--dist-url",
-        default="tcp://127.0.0.1:12306",
-        type=str,
-        help="url used to set up distributed training",
-    )
-
-    parser.add_argument(
-        "--node_rank", default=0, type=int, help="node rank for distributed training"
-    )
-
+    parser.add_argument('--local_rank', default=-1, type=int, help='node rank for distributed training')
     # ========================== tricks =============================
     parser.add_argument('--fp16', type=bool, default=False)
     parser.add_argument('--use_ema', type=bool, default=True)

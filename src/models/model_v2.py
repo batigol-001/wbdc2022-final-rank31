@@ -35,12 +35,19 @@ class TwoStreamModel(nn.Module):
         self.video_encoder = swin(args.swin_pretrained_path)
         self.video_proj_linear = nn.Sequential(nn.Linear(frame_embedding_size, bert_hidden_size))
 
-        self.cross_layers = nn.ModuleList(
-            [LXRTXLayer(bert_cfg) for _ in range(self.cross_layers_num)]
-        )
+        # bert，随机初始化
+        fusion_config = BertConfig()
+        fusion_config.num_hidden_layers = 3
+        fusion_config.intermediate_size = 3072
+        fusion_config.hidden_size = 768
+        fusion_config.num_attention_heads = 12
+        fusion_config.vocab_size = 5
+        self.cross_layers = BertModel(config=fusion_config)
+        self.cross_layers.apply(self._init_weights)
+
 
         #  分类头
-        self.cls_linear = nn.Linear(bert_hidden_size * 2, self.num_classes)
+        self.cls_linear = nn.Linear(bert_hidden_size * 3, self.num_classes)
 
         self.is_distrill = config["distrill"]
 
@@ -49,7 +56,7 @@ class TwoStreamModel(nn.Module):
 
             self.text_encoder_m = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=False)
             self.video_encoder_m = swin(args.swin_pretrained_path)
-            self.video_proj_linear_m = nn.Linear(frame_embedding_size, bert_hidden_size)
+            self.video_proj_linear_m = nn.Sequential(nn.Linear(frame_embedding_size, bert_hidden_size))
 
             self.cross_layers_m = nn.ModuleList(
                 [LXRTXLayer(bert_cfg) for _ in range(self.cross_layers_num)]
@@ -65,6 +72,15 @@ class TwoStreamModel(nn.Module):
                                 ]
             self.copy_params()
 
+    def _init_weights(self, module):
+        """ Initialize the weights """
+        if isinstance(module, (nn.Linear, nn.Embedding)):
+            # Slightly different from the TF version which uses truncated_normal for initialization
+            # cf https://github.com/pytorch/pytorch/pull/5617
+            module.weight.data.normal_(mean=0.0, std=0.02)
+
+
+
     def forward(self, text_input_ids, text_mask, video_feature, video_mask, labels=None, alpha=0):
 
 
@@ -73,22 +89,17 @@ class TwoStreamModel(nn.Module):
         video_embeds = self.video_proj_linear(video_embeds)
 
         text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
-        # 多模态融合, 参考LXMERT, cross_attention+self_attention+FFN
         text_embeds_mean = text_embeds.mean(1)#(text_embeds * text_mask.unsqueeze(-1)).sum(1) / text_mask.sum(1).unsqueeze(-1)
         video_embeds_mean = video_embeds.mean(1)#(video_embeds * video_mask.unsqueeze(-1)).sum(1) / video_mask.sum(1).unsqueeze(-1)
 
-        text_outputs = text_embeds
-        video_outputs = video_embeds
-        for layer_module in self.cross_layers:
-            text_outputs, video_outputs = layer_module(text_outputs, get_encoder_attention_mask(text_mask),
-                                                       video_outputs, get_encoder_attention_mask(video_mask))
+        # 多模态融合, 参考LXMERT, cross_attention+self_attention+FFN
+        fusion_embeds = torch.cat((text_embeds, video_embeds), dim=1)
+        fusion_mask = torch.cat((text_mask, video_mask), dim=1)
+        fusion_outputs = self.cross_layers(inputs_embeds=fusion_embeds, attention_mask=fusion_mask)["last_hidden_state"]
+        fusion_outputs_mean = fusion_outputs.mean(1)#(fusion_outputs * fusion_mask.unsqueeze(-1)).sum(1) / fusion_mask.sum(1).unsqueeze(-1)
 
 
-        text_outputs_mean = text_outputs.mean(1)#(text_outputs * text_mask.unsqueeze(-1)).sum(1) / text_mask.sum(1).unsqueeze(-1)
-        video_outputs_mean = video_outputs.mean(1)#(video_outputs * video_mask.unsqueeze(-1)).sum(1) / video_mask.sum(1).unsqueeze(-1)
-        text_feats = text_outputs_mean + text_embeds_mean
-        video_feats = video_outputs_mean + video_embeds_mean
-        concat_feats = torch.cat((text_feats, video_feats), dim=-1)
+        concat_feats = torch.cat((text_embeds_mean, video_embeds_mean, fusion_outputs_mean), dim=-1)
 
         preds = self.cls_linear(concat_feats)
 
@@ -108,9 +119,6 @@ class TwoStreamModel(nn.Module):
                     # text_embeds_m = self.text_encoder_m(input_ids=text_input_ids, attention_mask=text_mask)[
                     #     "last_hidden_state"]
 
-                    text_embeds_mean_m = text_embeds.mean(1)  # (text_embeds * text_mask.unsqueeze(-1)).sum(1) / text_mask.sum(1).unsqueeze(-1)
-                    video_embeds_mean_m = video_embeds_m.mean(1)  # (video_embeds * video_mask.unsqueeze(-1)).sum(1) / video_mask.sum(1).unsqueeze(-1)
-
                     text_outputs_m = text_embeds
                     video_outputs_m = video_embeds_m
 
@@ -120,8 +128,8 @@ class TwoStreamModel(nn.Module):
                                                                    video_outputs_m,
                                                                    get_encoder_attention_mask(video_mask))
 
-                    text_feats_m = text_outputs_m.mean(1) + text_embeds_mean_m
-                    video_feats_m = video_outputs_m.mean(1) + video_embeds_mean_m
+                    text_feats_m = text_outputs_m.mean(1) + text_embeds.mean(1)
+                    video_feats_m = video_outputs_m.mean(1) + video_embeds_m.mean(1)
                     concat_feats_m = torch.cat((text_feats_m, video_feats_m), dim=-1)
 
                     preds_m = self.cls_linear_m(concat_feats_m)

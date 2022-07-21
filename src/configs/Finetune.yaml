@@ -6,7 +6,7 @@ version: '1.0'
 # model
 distrill: False
 max_frames: 8
-frame_embedding_size: 768
+frame_embedding_size: 1024
 
 temp: 0.07
 mlm_probability: 0.15
