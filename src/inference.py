@@ -20,11 +20,11 @@ def inference():
 
 
     # 1. load data
-    dataset = MultiModalDataset(args, config, args.test_annotation, args.test_zip_frames, data_index=None, test_mode=True)
+    # dataset = MultiModalDataset(args, config, args.test_annotation, args.test_zip_frames, data_index=None, test_mode=True)
 
     # # test
-    #data_index = range(25000)
-    #dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, data_index=data_index, test_mode=True)
+    data_index = range(25000)
+    dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, data_index=data_index, test_mode=True)
 
     print("数据量:", len(dataset))
     batch_size = config["test_batch_size"]
@@ -45,7 +45,7 @@ def inference():
     checkpoint = torch.load(ckpt_file, map_location='cpu')
     model.load_state_dict(checkpoint['model_state_dict'])
 
-    model = torch.nn.parallel.DataParallel(model.cuda())    
+    model = torch.nn.parallel.DataParallel(model.half().cuda())
     model.eval()
 
     # 3. inference
@@ -53,10 +53,11 @@ def inference():
     s_time = time.time()
     with torch.no_grad():
         for batch in dataloader:
-            text_input_ids = batch['text_input_ids'].cuda()
-            text_mask = batch['text_attention_mask'].cuda()
-            video_feature = batch["frame_input"].cuda()
-            video_mask = batch['frame_mask'].cuda()
+            text_input_ids = batch['text_input_ids'].int().cuda()
+            text_mask = batch['text_attention_mask'].int().cuda()
+            video_feature = batch["frame_input"].half().cuda()
+            video_mask = batch['frame_mask'].int().cuda()
+
 
             pred_label_id = torch.argmax(model(text_input_ids, text_mask, video_feature, video_mask), 1)
             predictions.extend(pred_label_id.cpu().numpy())

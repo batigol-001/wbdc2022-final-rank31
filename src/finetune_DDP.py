@@ -232,7 +232,7 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
 
             with amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
-                #torch.nn.utils.clip_grad_value_(amp.master_params(optimizer), config["max_grad_norm"])
+                #torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), config["max_grad_norm"])
 
             if args.use_adv == 1:
                 # 对抗训练

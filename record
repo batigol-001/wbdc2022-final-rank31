@@ -135,9 +135,8 @@ val_batch_size = 256
    #去掉cls_linear前的dropout, 线下0.6996(+5k) loss =1.154, 线上0.692376(+1.6K)，线上推理速度=239s
    #加text_proj_linear层0.6969 loss=1.155 不行
  # 优化图片读出, to_tensor, norimal 可以在GPU做, test测试1000个图片速度下降28s->19s,68%
-   # 测试速度0. =239s
-   # 测试速度1. =241s, 分段tensor
-   # 测试速度2. =235s
+
+
 
  # version=29 基于23, 调整架构 cross_layers=1, 线下6998，loss=1.147, 线上692648，233s
  #version=30 基于23, 调整架构 cross_layers=3+ADD loss=7002, loss=1.161， 线上693094；dockerv13;
@@ -147,4 +146,17 @@ val_batch_size = 256
 
   # version=32 FGM base(基于30)， 线下7015,loss=1.123 线上0.697992(+5K)
   # verison=33 no ema 4轮 6641
-  # version=34 mean
+  # version=34 cross_layers=6,跑完 下线6970, loss=1.156
+
+
+  # 测试速度 base
+  # 8桢+ bs128, gpu 18628, 速度=239s
+  # 16桢+bs64, gpu 18628, 速度=437s
+
+  # DDP+half
+  # 8桢 + bs128, gpu 11732MiB, 速度=222s, 0.0003200128005120205的差距,
+  # 16桢 + bs128 gpu 31204MiB，速度=420s
+  # 24桢 + bs128 gpu 31204MiB，速度=592s
+  # 优化
+
+  # version=35(30) freeze swin, 训练速度快,内存占用少 下线0.6885，loss=1.184， 线上 0.68248

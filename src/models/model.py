@@ -33,7 +33,7 @@ class TwoStreamModel(nn.Module):
         self.text_encoder = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=False)
 
         self.video_encoder = swin(args.swin_pretrained_path)
-        self.video_proj_linear = nn.Sequential(nn.Linear(frame_embedding_size, bert_hidden_size))
+        self.video_proj_linear = nn.Linear(frame_embedding_size, bert_hidden_size)
 
         self.cross_layers = nn.ModuleList(
             [LXRTXLayer(bert_cfg) for _ in range(self.cross_layers_num)]
@@ -69,7 +69,8 @@ class TwoStreamModel(nn.Module):
 
 
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
-        video_embeds = self.video_encoder(video_feature)
+        with torch.no_grad():
+            video_embeds = self.video_encoder(video_feature)
         video_embeds = self.video_proj_linear(video_embeds)
 
         text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
@@ -158,7 +159,7 @@ class TwoStreamModel(nn.Module):
 def get_encoder_attention_mask(mask):
     encoder_mask = mask[:, None, None, :]
     encoder_mask = (1.0 - encoder_mask) * -10000.0
-
+    encoder_mask = encoder_mask.half()
     return encoder_mask
 
 

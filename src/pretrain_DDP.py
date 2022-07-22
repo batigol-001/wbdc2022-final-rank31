@@ -26,7 +26,7 @@ from configs.config import parse_args
 from utlils.util import setup_device, setup_seed, build_optimizer, setup_logging
 from utlils.util import init_distributed_mode, get_rank, get_world_size, is_main_process
 from dataset.data_helper import MultiModalDataset
-from models.model_pretrain import TwoStreamModel
+from models.model_pretrain_simple import TwoStreamModel
 from dataset.utils import distributed_concat, reduce_tensor
 
 import gc
@@ -192,22 +192,23 @@ def train_worker(rank, local_rank, device,args, config):
             else:
                 alpha =config['alpha'] * min(1, i / len(train_dataloader))
 
-            loss, (mlm_loss,  ita_loss, itm_loss) = model(text_input_ids, text_mask, video_feature, video_mask, alpha)
+            loss, (mlm_loss, itm_loss) = model(text_input_ids, text_mask, video_feature, video_mask, alpha)
             reduced_loss = reduce_tensor(loss.data)
             reduced_mlm_loss = reduce_tensor(mlm_loss.data)
-            reduced_ita_loss = reduce_tensor(ita_loss.data)
+            # reduced_ita_loss = reduce_tensor(ita_loss.data)
             reduced_itm_loss = reduce_tensor(itm_loss.data)
 
             loss = loss / config["accum_step"]
             with amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
+                torch.nn.utils.clip_grad_value_(amp.master_params(optimizer), config["max_grad_norm"])
             #loss.backward()
 
             print_step += 1
 
             print_loss += reduced_loss.cpu().item()
             print_mlm_loss += reduced_mlm_loss.cpu().item()
-            print_ita_loss += reduced_ita_loss.cpu().item()
+            # print_ita_loss += reduced_ita_loss.cpu().item()
             print_itm_loss += reduced_itm_loss.cpu().item()
             if rank == 0 and print_step % config["print_steps"] == 0:
                 lr = optimizer.param_groups[0]['lr']
