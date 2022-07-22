@@ -64,7 +64,7 @@ class TwoStreamModel(nn.Module):
         self.text_proj_m = nn.Linear(bert_hidden_size, embed_dim)
         self.mlm_head_m = BertOnlyMLMHead(bert_cfg)
 
-        self.model_pairs = [[self.video_encoder, self.video_encoder_m],
+        self.model_pairs = [#[self.video_encoder, self.video_encoder_m],
                             [self.video_proj_linear, self.video_proj_linear_m],
                             [self.video_proj, self.video_proj_m],
                             [self.text_encoder, self.text_encoder_m],
@@ -91,8 +91,8 @@ class TwoStreamModel(nn.Module):
 
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
         with torch.no_grad():
-            video_embeds = self.video_encoder(video_feature)
-        video_embeds = self.video_proj_linear(video_embeds)
+            video_embeds_pre = self.video_encoder(video_feature)
+        video_embeds = self.video_proj_linear(video_embeds_pre)
 
         text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
         # feat 768-> 256 映射到低维空间， 视频取mean_pooling, 文本取[cls]
@@ -102,8 +102,8 @@ class TwoStreamModel(nn.Module):
         # 动量编码器
         with torch.no_grad():
             self._momentum_update()
-            video_embeds_m = self.video_encoder_m(video_feature)
-            video_embeds_m = self.video_proj_linear_m(video_embeds_m)
+            # video_embeds_m = self.video_encoder_m(video_feature)
+            video_embeds_m = self.video_proj_linear_m(video_embeds_pre)
 
             video_feat_m = F.normalize(self.video_proj_m(video_embeds_m.mean(1)), dim=-1)
             # 合并队列

@@ -51,7 +51,30 @@ class TwoStreamModel(nn.Module):
 
         self.lm = MaskLM(tokenizer_path=args.bert_dir)
 
+        # 创建动量模型
+        self.text_encoder_m = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg,
+                                                        add_pooling_layer=True)
+        self.text_proj_m = nn.Linear(bert_hidden_size, embed_dim)
 
+        self.video_proj_linear_m = nn.Linear(frame_embedding_size, bert_hidden_size)
+        self.video_proj_m = nn.Linear(bert_hidden_size, embed_dim)
+
+        self.model_pairs = [
+                            [self.video_proj_linear, self.video_proj_linear_m],
+                            [self.video_proj, self.video_proj_m],
+                            [self.text_encoder, self.text_encoder_m],
+                            [self.text_proj, self.text_proj_m]
+                            ]
+
+        self.copy_params()
+
+        # create the queue
+        self.register_buffer("video_queue", torch.randn(embed_dim, self.queue_size))
+        self.register_buffer("text_queue", torch.randn(embed_dim, self.queue_size))
+        self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
+
+        self.video_queue = nn.functional.normalize(self.video_queue, dim=0)
+        self.text_queue = nn.functional.normalize(self.text_queue, dim=0)
 
     def forward(self,  text_input_ids, text_mask, video_feature, video_mask, alpha=0):
 
@@ -60,8 +83,8 @@ class TwoStreamModel(nn.Module):
 
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
         with torch.no_grad():
-            video_embeds = self.video_encoder(video_feature)
-        video_embeds = self.video_proj_linear(video_embeds)
+            video_embeds_pre = self.video_encoder(video_feature)
+        video_embeds = nn.ReLU()(self.video_proj_linear(video_embeds_pre))
 
         # MLM
         # MASK
@@ -73,8 +96,27 @@ class TwoStreamModel(nn.Module):
         video_feat = F.normalize(self.video_proj(video_embeds.mean(1)), dim=-1)
         text_feat = F.normalize(self.text_proj(text_embeds[:, 0, :]), dim=-1)
 
-        sim_i2t = video_feat @ text_feat.t() / self.temp
-        sim_t2i = text_feat @ video_feat.t() / self.temp
+        # sim_i2t = video_feat @ text_feat.t() / self.temp
+        # sim_t2i = text_feat @ video_feat.t() / self.temp
+        # 动量编码器
+        with torch.no_grad():
+            self._momentum_update()
+
+            video_embeds_m = self.video_proj_linear_m(video_embeds_pre)
+            video_feat_m = F.normalize(self.video_proj_m(video_embeds_m.mean(1)), dim=-1)
+            video_feat_all = torch.cat([video_feat_m.t(), self.video_queue.clone().detach()], dim=1)
+
+            text_embeds_m = self.text_encoder_m(input_ids=text_input_ids, attention_mask=text_mask)[
+                "last_hidden_state"]
+            text_feat_m = F.normalize(self.text_proj_m(text_embeds_m[:, 0, :]), dim=-1)
+            text_feat_all = torch.cat([text_feat_m.t(), self.text_queue.clone().detach()], dim=1)
+
+
+        sim_i2t = video_feat @ text_feat_all / self.temp
+        sim_t2i = text_feat @ video_feat_all / self.temp
+
+        self._dequeue_and_enqueue(video_feat_m, text_feat_m)
+
 
         with torch.no_grad():
             bs = video_feature.size(0)

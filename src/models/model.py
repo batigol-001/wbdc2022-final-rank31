@@ -69,9 +69,9 @@ class TwoStreamModel(nn.Module):
 
 
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
-        with torch.no_grad():
-            video_embeds = self.video_encoder(video_feature)
-        video_embeds = self.video_proj_linear(video_embeds)
+        # with torch.no_grad():
+        video_embeds = self.video_encoder(video_feature)
+        video_embeds = nn.ReLU()(self.video_proj_linear(video_embeds))
 
         text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
         # 多模态融合, 参考LXMERT, cross_attention+self_attention+FFN
