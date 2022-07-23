@@ -163,7 +163,9 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
     pretrain_file = config["pretrain_file"]
     if pretrain_file and os.path.exists(pretrain_file):
         args.logger.info(f"加载已经预训练过的模型, file= {pretrain_file}")
-        model.load_state_dict(torch.load(pretrain_file, map_location='cpu'), strict=False)
+        checkpoint = torch.load(pretrain_file, map_location='cpu')
+        model.load_state_dict(checkpoint["model_state_dict"], strict=False)
+
 
 
 

@@ -160,3 +160,6 @@ val_batch_size = 256
   # 优化
 
   # version=35(30) freeze swin, 训练速度快,内存占用少 下线0.6885，loss=1.184， 线上 0.68248
+
+  # 预训练V1.0 epoch2 - 3loss上升
+  # verison=36， 预训练epoch2， 对比V30
