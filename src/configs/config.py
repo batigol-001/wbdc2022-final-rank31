@@ -7,18 +7,19 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42, help="random seed.")
     # ========================= Data Configs ==========================
 
-    parser.add_argument('--unlabeled_annotation', type=str, default='/home/tione/notebook/data/annotations/unlabeled.json')
+    parser.add_argument('--unlabeled_annotation', type=str, default='/home/tione/notebook/data/annotations/unlabeled_new.json')
     parser.add_argument('--unlabeled_zip_frames', type=str, default='/home/tione/notebook/data/zip_frames/unlabeled/')
-
+    parser.add_argument('--unlabeled_zip_feats', type=str, default='/home/tione/notebook/data/zip_feats/unlabeled.zip')
 
     parser.add_argument('--train_annotation', type=str, default='/home/tione/notebook/data/annotations/labeled.json')
     parser.add_argument('--train_zip_frames', type=str, default='/home/tione/notebook/data/zip_frames/labeled/')
+    parser.add_argument('--train_zip_feats', type=str, default='/home/tione/notebook/data/zip_feats/labeled.zip/')
 
     parser.add_argument('--test_annotation', type=str, default='/opt/ml/input/data/annotations/test.json')
     parser.add_argument('--test_zip_frames', type=str, default='/opt/ml/input/data/zip_frames/test/')
     parser.add_argument('--test_output_csv', type=str, default='/opt/ml/output/result.csv')
 
-    parser.add_argument('--train_feature_output_path', type=str, default='/home/tione/notebook/data/zip_feats/labeled/')
+
 
 
 

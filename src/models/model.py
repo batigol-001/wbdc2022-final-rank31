@@ -11,8 +11,9 @@ from utlils.category_id_map import CATEGORY_ID_LIST
 from third_party.masklm import MaskLM, MaskVideo, ShuffleVideo
 
 from third_party.lxrt import LXRTXLayer, BertLayer, BertLayerNorm
-from third_party.swin import  swin
+from third_party.swin import swin
 from third_party.vit import vit
+
 
 # 双流模型
 class TwoStreamModel(nn.Module):
@@ -30,7 +31,8 @@ class TwoStreamModel(nn.Module):
 
         self.cross_layers_num = config["cross_layers_num"]
 
-        self.text_encoder = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=False)
+        self.text_encoder = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg,
+                                                      add_pooling_layer=False)
 
         self.video_encoder = swin(args.swin_pretrained_path)
         self.video_proj_linear = nn.Linear(frame_embedding_size, bert_hidden_size)
@@ -47,7 +49,8 @@ class TwoStreamModel(nn.Module):
         if self.is_distrill:
             # 创建动量模型
 
-            self.text_encoder_m = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=False)
+            self.text_encoder_m = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg,
+                                                            add_pooling_layer=False)
             self.video_encoder_m = swin(args.swin_pretrained_path)
             self.video_proj_linear_m = nn.Linear(frame_embedding_size, bert_hidden_size)
 
@@ -67,16 +70,17 @@ class TwoStreamModel(nn.Module):
 
     def forward(self, text_input_ids, text_mask, video_feature, video_mask, labels=None, alpha=0):
 
-
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
-        # with torch.no_grad():
+
         video_embeds = self.video_encoder(video_feature)
         video_embeds = nn.ReLU()(self.video_proj_linear(video_embeds))
 
         text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
         # 多模态融合, 参考LXMERT, cross_attention+self_attention+FFN
-        text_embeds_mean = text_embeds.mean(1)#(text_embeds * text_mask.unsqueeze(-1)).sum(1) / text_mask.sum(1).unsqueeze(-1)
-        video_embeds_mean = video_embeds.mean(1)#(video_embeds * video_mask.unsqueeze(-1)).sum(1) / video_mask.sum(1).unsqueeze(-1)
+        text_embeds_mean = text_embeds.mean(
+            1)  # (text_embeds * text_mask.unsqueeze(-1)).sum(1) / text_mask.sum(1).unsqueeze(-1)
+        video_embeds_mean = video_embeds.mean(
+            1)  # (video_embeds * video_mask.unsqueeze(-1)).sum(1) / video_mask.sum(1).unsqueeze(-1)
 
         text_outputs = text_embeds
         video_outputs = video_embeds
@@ -84,18 +88,18 @@ class TwoStreamModel(nn.Module):
             text_outputs, video_outputs = layer_module(text_outputs, get_encoder_attention_mask(text_mask),
                                                        video_outputs, get_encoder_attention_mask(video_mask))
 
-
-        text_outputs_mean = text_outputs.mean(1)#(text_outputs * text_mask.unsqueeze(-1)).sum(1) / text_mask.sum(1).unsqueeze(-1)
-        video_outputs_mean = video_outputs.mean(1)#(video_outputs * video_mask.unsqueeze(-1)).sum(1) / video_mask.sum(1).unsqueeze(-1)
+        text_outputs_mean = text_outputs.mean(
+            1)  # (text_outputs * text_mask.unsqueeze(-1)).sum(1) / text_mask.sum(1).unsqueeze(-1)
+        video_outputs_mean = video_outputs.mean(
+            1)  # (video_outputs * video_mask.unsqueeze(-1)).sum(1) / video_mask.sum(1).unsqueeze(-1)
         text_feats = text_outputs_mean + text_embeds_mean
         video_feats = video_outputs_mean + video_embeds_mean
         concat_feats = torch.cat((text_feats, video_feats), dim=-1)
 
         preds = self.cls_linear(concat_feats)
 
-
         if labels is None:
-            return preds #F.log_softmax(preds, dim=-1)
+            return preds  # F.log_softmax(preds, dim=-1)
         else:
             labels = labels.squeeze(dim=1)
             loss = F.cross_entropy(preds, labels)
@@ -105,21 +109,23 @@ class TwoStreamModel(nn.Module):
                 with torch.no_grad():
                     self._momentum_update()
                     video_embeds_m = self.video_encoder_m(video_feature)
-                    video_embeds_m = self.video_proj_linear_m(video_embeds_m)
+                    video_embeds_m = nn.ReLU()(self.video_proj_linear_m(video_embeds_m))
                     # text_embeds_m = self.text_encoder_m(input_ids=text_input_ids, attention_mask=text_mask)[
                     #     "last_hidden_state"]
 
-                    text_embeds_mean_m = text_embeds.mean(1)  # (text_embeds * text_mask.unsqueeze(-1)).sum(1) / text_mask.sum(1).unsqueeze(-1)
-                    video_embeds_mean_m = video_embeds_m.mean(1)  # (video_embeds * video_mask.unsqueeze(-1)).sum(1) / video_mask.sum(1).unsqueeze(-1)
+                    text_embeds_mean_m = text_embeds.mean(
+                        1)  # (text_embeds * text_mask.unsqueeze(-1)).sum(1) / text_mask.sum(1).unsqueeze(-1)
+                    video_embeds_mean_m = video_embeds_m.mean(
+                        1)  # (video_embeds * video_mask.unsqueeze(-1)).sum(1) / video_mask.sum(1).unsqueeze(-1)
 
                     text_outputs_m = text_embeds
                     video_outputs_m = video_embeds_m
 
                     for layer_module in self.cross_layers_m:
                         text_outputs_m, video_outputs_m = layer_module(text_outputs_m,
-                                                                   get_encoder_attention_mask(text_mask),
-                                                                   video_outputs_m,
-                                                                   get_encoder_attention_mask(video_mask))
+                                                                       get_encoder_attention_mask(text_mask),
+                                                                       video_outputs_m,
+                                                                       get_encoder_attention_mask(video_mask))
 
                     text_feats_m = text_outputs_m.mean(1) + text_embeds_mean_m
                     video_feats_m = video_outputs_m.mean(1) + video_embeds_mean_m
@@ -137,9 +143,6 @@ class TwoStreamModel(nn.Module):
                 accuracy = (labels == pred_label_id).float().sum() / labels.shape[0]
 
             return loss, accuracy, pred_label_id, labels
-
-
-
 
     @torch.no_grad()
     def copy_params(self):
@@ -159,7 +162,7 @@ class TwoStreamModel(nn.Module):
 def get_encoder_attention_mask(mask):
     encoder_mask = mask[:, None, None, :]
     encoder_mask = (1.0 - encoder_mask) * -10000.0
-    encoder_mask = encoder_mask.half()
+    # encoder_mask = encoder_mask.half()
     return encoder_mask
 
 
@@ -173,7 +176,6 @@ class VideoGRU(torch.nn.Module):
         self.layer_norm = nn.LayerNorm(video_frame_size, eps=1e-12)
 
     def forward(self, video_embeds, video_mask):
-
         embedded_vector = self.dropout(video_embeds)
         video_length = video_mask.sum(dim=-1).detach().cpu().numpy().astype("int64")
         # torch.nn.utils.rnn.pack_padded_sequence()这里的pack，理解成压紧比较好。 将一个 填充过的变长序列 压紧。（填充时候，会有冗余，所以压紧一下）其中pack的过程为：（注意pack的形式，不是按行压，而是按列压）
@@ -189,6 +191,5 @@ class VideoGRU(torch.nn.Module):
         out_vector = torch.tanh(self.linear_layer(out_vector))
 
         out_vector = self.layer_norm(out_vector + video_embeds)
-
 
         return out_vector

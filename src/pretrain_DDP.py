@@ -25,7 +25,7 @@ from apex import amp
 from configs.config import parse_args
 from utlils.util import setup_device, setup_seed, build_optimizer, setup_logging
 from utlils.util import init_distributed_mode, get_rank, get_world_size, is_main_process
-from dataset.data_helper import MultiModalDataset
+from dataset.data_helper_v1 import MultiModalDataset
 from models.model_pretrain_simple import TwoStreamModel
 from dataset.utils import distributed_concat, reduce_tensor
 
@@ -69,7 +69,33 @@ def validate(model, val_dataloader):
     return loss, (mlm_loss, ita_loss, itm_loss)
 
 
-def create_pretrain_dataloaders(args,  config, annotations, zip_frames):
+# def create_pretrain_dataloaders(args,  config, annotations, zip_frames):
+#     if args.num_workers > 0:
+#         dataloader_class = partial(DataLoader, pin_memory=True, num_workers=args.num_workers,
+#                                    prefetch_factor=args.prefetch)
+#     else:
+#         dataloader_class = partial(DataLoader, pin_memory=True, num_workers=0)
+#
+#     dataset = None
+#     for idx, (_annotation, _zip_feat) in enumerate(zip(annotations, zip_frames)):
+#
+#         # index = list(range(500))
+#         sub_dataset = MultiModalDataset(args, config, _annotation, _zip_feat, None, test_mode=True)
+#         if idx == 0:
+#             dataset = sub_dataset
+#         else:
+#             dataset = ConcatDataset([dataset, sub_dataset])
+#
+#     train_sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True, seed=args.seed, drop_last=True)
+#     train_dataloader = dataloader_class(dataset,
+#                                     batch_size=config["train_batch_size"],
+#                                     sampler=train_sampler,
+#                                     drop_last=True)
+#
+#     return train_dataloader
+
+# V1 版本抽过特征
+def create_pretrain_dataloaders(args,  config, annotations, zip_feats):
     if args.num_workers > 0:
         dataloader_class = partial(DataLoader, pin_memory=True, num_workers=args.num_workers,
                                    prefetch_factor=args.prefetch)
@@ -77,7 +103,7 @@ def create_pretrain_dataloaders(args,  config, annotations, zip_frames):
         dataloader_class = partial(DataLoader, pin_memory=True, num_workers=0)
 
     dataset = None
-    for idx, (_annotation, _zip_feat) in enumerate(zip(annotations, zip_frames)):
+    for idx, (_annotation, _zip_feat) in enumerate(zip(annotations, zip_feats)):
 
         # index = list(range(500))
         sub_dataset = MultiModalDataset(args, config, _annotation, _zip_feat, None, test_mode=True)
@@ -94,12 +120,11 @@ def create_pretrain_dataloaders(args,  config, annotations, zip_frames):
 
     return train_dataloader
 
-
 def train_worker(rank, local_rank, device,args, config):
     #  load data
     annotations = [args.unlabeled_annotation, args.train_annotation]
-    zip_feats = [args.unlabeled_zip_frames, args.train_zip_frames]
-
+    #zip_feats = [args.unlabeled_zip_frames, args.train_zip_frames]
+    zip_feats = [args.unlabeled_zip_feats, args.train_zip_feats]
     # annotations = [args.train_annotation]
     # zip_feats = [args.train_zip_frames]
 
@@ -201,7 +226,7 @@ def train_worker(rank, local_rank, device,args, config):
             loss = loss / config["accum_step"]
             with amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
-                torch.nn.utils.clip_grad_value_(amp.master_params(optimizer), config["max_grad_norm"])
+                torch.nn.utils.clip_grad_norm(amp.master_params(optimizer), config["max_grad_norm"])
             #loss.backward()
 
             print_step += 1

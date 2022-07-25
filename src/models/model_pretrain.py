@@ -64,7 +64,7 @@ class TwoStreamModel(nn.Module):
         self.text_proj_m = nn.Linear(bert_hidden_size, embed_dim)
         self.mlm_head_m = BertOnlyMLMHead(bert_cfg)
 
-        self.model_pairs = [#[self.video_encoder, self.video_encoder_m],
+        self.model_pairs = [[self.video_encoder, self.video_encoder_m],
                             [self.video_proj_linear, self.video_proj_linear_m],
                             [self.video_proj, self.video_proj_m],
                             [self.text_encoder, self.text_encoder_m],
@@ -90,20 +90,19 @@ class TwoStreamModel(nn.Module):
             self.temp.clamp_(0.001, 0.5)
 
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
-        with torch.no_grad():
-            video_embeds_pre = self.video_encoder(video_feature)
-        video_embeds = self.video_proj_linear(video_embeds_pre)
+        video_embeds_pre = self.video_encoder(video_feature)
+        video_embeds = nn.ReLU()(self.video_proj_linear(video_embeds_pre))
 
         text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
         # feat 768-> 256 映射到低维空间， 视频取mean_pooling, 文本取[cls]
         video_feat = F.normalize(self.video_proj(video_embeds.mean(1)), dim=-1)
-        text_feat = F.normalize(self.text_proj(text_embeds[:, 0, :]), dim=-1)
+        text_feat = F.normalize(self.text_proj(text_embeds.mean(1)), dim=-1)
 
         # 动量编码器
         with torch.no_grad():
             self._momentum_update()
-            # video_embeds_m = self.video_encoder_m(video_feature)
-            video_embeds_m = self.video_proj_linear_m(video_embeds_pre)
+            video_embeds_m = self.video_encoder_m(video_feature)
+            video_embeds_m = nn.ReLU()(self.video_proj_linear_m(video_embeds_pre))
 
             video_feat_m = F.normalize(self.video_proj_m(video_embeds_m.mean(1)), dim=-1)
             # 合并队列
@@ -111,7 +110,7 @@ class TwoStreamModel(nn.Module):
 
             text_embeds_m = self.text_encoder_m(input_ids=text_input_ids, attention_mask=text_mask)[
                 "last_hidden_state"]
-            text_feat_m = F.normalize(self.text_proj_m(text_embeds_m[:, 0, :]), dim=-1)
+            text_feat_m = F.normalize(self.text_proj_m(text_embeds_m.mean(1)), dim=-1)
             text_feat_all = torch.cat([text_feat_m.t(), self.text_queue.clone().detach()], dim=1)
 
             # 计算相似度, 动量feat 与 正负样本， 负样本队列中的
@@ -184,7 +183,7 @@ class TwoStreamModel(nn.Module):
             text_outputs, video_outputs = layer_module(text_outputs, get_encoder_attention_mask(text_mask),
                                                        video_outputs, get_encoder_attention_mask(video_mask))
         # 取文本【CLS】
-        vl_embeddings = torch.cat([text_outputs[:, 0, :], text_neg_outputs[:, 0, :]], dim=0)
+        vl_embeddings = torch.cat([text_outputs.mean(1), text_neg_outputs.mean(1)], dim=0)
         vl_output = self.itm_head(vl_embeddings)
 
         itm_labels = torch.cat([torch.ones(bs, dtype=torch.long), torch.zeros(2 * bs, dtype=torch.long)],
