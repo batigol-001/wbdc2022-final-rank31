@@ -631,12 +631,12 @@ def swin(pretrained=None):
     # small,
     # model = SwinTransformer(img_size=224, num_classes=0, depths=[2, 2, 18, 2], drop_path_rate=0.2)
     # base
-    #     model = SwinTransformer(img_size=224, num_classes=0, embed_dim=128, depths=[2, 2, 18, 2], num_heads=[4, 8, 16, 32],
-    #                             drop_path_rate=0.2)
+    model = SwinTransformer(img_size=224, num_classes=0, embed_dim=128, depths=[2, 2, 18, 2], num_heads=[4, 8, 16, 32],
+                            drop_path_rate=0.2)
 
-    # large
-    model = SwinTransformer(img_size=224, num_classes=0, embed_dim=192, depths=[2, 2, 18, 2], num_heads=[6, 12, 24, 48],
-                             drop_rate=0.1)
+    # # large
+    # model = SwinTransformer(img_size=224, num_classes=0, embed_dim=192, depths=[2, 2, 18, 2], num_heads=[6, 12, 24, 48],
+    #                          drop_rate=0.1)
 
     if pretrained is not None:
         print("加载 swin 权重", pretrained)

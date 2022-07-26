@@ -101,7 +101,7 @@ class TwoStreamModel(nn.Module):
         # 动量编码器
         with torch.no_grad():
             self._momentum_update()
-            video_embeds_m = self.video_encoder_m(video_feature)
+            # video_embeds_m = self.video_encoder_m(video_feature)
             video_embeds_m = nn.ReLU()(self.video_proj_linear_m(video_embeds_pre))
 
             video_feat_m = F.normalize(self.video_proj_m(video_embeds_m.mean(1)), dim=-1)

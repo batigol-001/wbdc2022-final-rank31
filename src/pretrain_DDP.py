@@ -26,7 +26,7 @@ from configs.config import parse_args
 from utlils.util import setup_device, setup_seed, build_optimizer, setup_logging
 from utlils.util import init_distributed_mode, get_rank, get_world_size, is_main_process
 from dataset.data_helper_v1 import MultiModalDataset
-from models.model_pretrain_simple import TwoStreamModel
+from models.model_pretrain import TwoStreamModel
 from dataset.utils import distributed_concat, reduce_tensor
 
 import gc
