@@ -91,7 +91,7 @@ class TwoStreamModel(nn.Module):
 
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
         video_embeds_pre = self.video_encoder(video_feature)
-        video_embeds = nn.ReLU()(self.video_proj_linear(video_embeds_pre))
+        video_embeds = self.video_proj_linear(video_embeds_pre)
 
         text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
         # feat 768-> 256 映射到低维空间， 视频取mean_pooling, 文本取[cls]
@@ -102,7 +102,7 @@ class TwoStreamModel(nn.Module):
         with torch.no_grad():
             self._momentum_update()
             # video_embeds_m = self.video_encoder_m(video_feature)
-            video_embeds_m = nn.ReLU()(self.video_proj_linear_m(video_embeds_pre))
+            video_embeds_m = self.video_proj_linear_m(video_embeds_pre)
 
             video_feat_m = F.normalize(self.video_proj_m(video_embeds_m.mean(1)), dim=-1)
             # 合并队列

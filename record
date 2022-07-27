@@ -163,6 +163,8 @@ val_batch_size = 256
 
   # 预训练V1.0 epoch2 - 3loss上升
   # verison=36， 预训练epoch3，10轮， 对比V30， 线下6997，loss=1.152 线上69593(+3k)
+  # version=37， swin-large ema+fgm 效果一般
+  # version=38, pretrain4.0 加载epoch11
 
 
 # todo 分类头输入，cross-layers输出可以接 nextvld 提取桢之间关系

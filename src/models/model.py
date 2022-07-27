@@ -73,7 +73,7 @@ class TwoStreamModel(nn.Module):
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
 
         video_embeds = self.video_encoder(video_feature)
-        video_embeds = nn.ReLU()(self.video_proj_linear(video_embeds))
+        video_embeds = self.video_proj_linear(video_embeds)
 
         text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
         # 多模态融合, 参考LXMERT, cross_attention+self_attention+FFN
@@ -109,7 +109,7 @@ class TwoStreamModel(nn.Module):
                 with torch.no_grad():
                     self._momentum_update()
                     video_embeds_m = self.video_encoder_m(video_feature)
-                    video_embeds_m = nn.ReLU()(self.video_proj_linear_m(video_embeds_m))
+                    video_embeds_m = self.video_proj_linear_m(video_embeds_m)
                     # text_embeds_m = self.text_encoder_m(input_ids=text_input_ids, attention_mask=text_mask)[
                     #     "last_hidden_state"]
 
