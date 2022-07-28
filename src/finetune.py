@@ -89,29 +89,13 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
                                                 num_training_steps=max_steps)
     start_epoch = 1
 
-    # if config['resume'] != "" and os.path.exists(config['resume']):
-    #     # 加载之前训练过的模型
-    #     args.logger.warning(f"loading model and params from {config['resume']}")
-    #     checkpoint = torch.load(config['resume'], map_location='cpu')
-    #     model.load_state_dict(checkpoint['model_state_dict'])
-    #     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    #     for state in optimizer.state.values():
-    #         for k, v in state.items():
-    #             if isinstance(v, torch.Tensor):
-    #                 state[k] = v.cuda()
-    #
-    #     scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-    #     start_epoch = checkpoint['epoch'] + 1
-
-    # args.logger.info(f" start_epoch  = {start_epoch}")
+    pretrain_file = config["pretrain_file"]
+    if pretrain_file and os.path.exists(pretrain_file):
+        args.logger.info(f"加载已经预训练过的模型, file= {pretrain_file}")
+        checkpoint = torch.load(pretrain_file, map_location='cpu')
+        model.load_state_dict(checkpoint["model_state_dict"], strict=False)
 
     model.to(args.device)
-
-    # for state in optimizer.state.values():
-    #     for k, v in state.items():
-    #         if isinstance(v, torch.Tensor):
-    #             state[k] = v.cuda()
-
 
     if args.n_gpu > 1:
         model = torch.nn.parallel.DataParallel(model)
@@ -153,14 +137,14 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
             accuracy = accuracy.mean()
 
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
+            #torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
             if args.use_adv == 1:
                 # 对抗训练
                 fgm.attack()  # 在embedding上添加对抗扰动
                 loss_adv,_, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, alpha)  # 这部分一定要注意model该传入的参数
                 loss_adv = loss_adv.mean()
                 loss_adv.backward()# 反向传播，并在正常的grad基础上，累加对抗训练的梯度
-                torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
+                #torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
 
                 fgm.restore()  # 恢复embedding参数
             elif args.use_adv == 2:
@@ -174,7 +158,7 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
                     loss_adv,_, _, _ = model(text_input_ids, text_mask, video_feature, video_mask, alpha)
                     loss_adv = loss_adv.mean()
                     loss_adv.backward()# 反向传播，并在正常的grad基础上，累加对抗训练的梯度
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
+                    #torch.nn.utils.clip_grad_norm_(model.parameters(), config["max_grad_norm"])
                 pgd.restore()  # 恢复embedding参数
 
             optimizer.step()
@@ -254,14 +238,14 @@ def train_and_validate(args, config, train_index, val_index, fold_idx):
         # 结束评估
         if args.use_ema:
             ema.restore()
-
+        torch.cuda.empty_cache()
         args.logger.info(f"cost time: {time.time() - start_time}")
         # # todo
         # if epoch == 3:
         #     break
 
     args.logger.info(f" train finished!..................")
-    torch.cuda.empty_cache()
+
 
 def main():
 

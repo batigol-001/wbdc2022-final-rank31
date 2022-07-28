@@ -16,14 +16,14 @@ sudo docker login tione-wxdsj.tencentcloudcr.com --username 100026276478 --passw
 注2：请勿将训练数据打包进 docker 容器中，这样会导致容器太大。在推理测试的时候，测试数据会自动挂载到 /opt/ml/input/ 目录下。
 注3：请确保入口工作目录（WORKDIR）为 /opt/ml/wxcode
 # build
-sudo docker build -t tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:v15.0 .
+sudo docker build -t tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:v17.0 .
 
 
 线下验证：
 sudo docker run -it tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:v1.0 /bin/bash
 
 
-sudo docker push tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:v15.0
+sudo docker push tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:v17.0
 
 
 

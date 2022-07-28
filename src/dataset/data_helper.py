@@ -11,7 +11,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler
 from transformers import BertTokenizer
-from torchvision.transforms import Compose, Resize, CenterCrop, Normalize, ToTensor, RandomResizedCrop, RandomCrop, RandomHorizontalFlip
+from torchvision.transforms import Compose, Resize, CenterCrop, Normalize, ToTensor, RandomResizedCrop, RandomHorizontalFlip, ToPILImage
 
 from utlils.category_id_map import category_id_to_lv2id
 from dataset.randzaugment import RandomAugment
@@ -89,7 +89,8 @@ class MultiModalDataset(Dataset):
                  ann_path: str,
                  zip_frame_dir: str,
                  data_index: list = None,
-                 test_mode: bool = False):
+                 test_mode: bool = False,
+                 is_augment: bool = False):
 
 
         self.bert_seq_lenght = args.bert_seq_lenght
@@ -111,25 +112,24 @@ class MultiModalDataset(Dataset):
         self.tokenizer = BertTokenizer.from_pretrained(args.bert_dir, use_fast=True, cache_dir=args.bert_cache)
 
         # we use the standard image transform as in the offifical Swin-Transformer.
-        # if is_augment:
-        #     self.transform = Compose([
-        #         Resize(256),
-        #         RandomCrop(224),
-        #         RandomHorizontalFlip(p=0.3),
-        #         GaussianBlur(),
-        #         RandomAugment(2, 9, isPIL=False, augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
-        #                                               'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
-        #         ToTensor(),
-        #         Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        #     ])
-        # else:
-        self.transform = Compose([
-            Resize(256),
-            CenterCrop(224),
-            # GaussianBlur(),
-            ToTensor(),
-            Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+        if is_augment:
+            self.transform = Compose([
+                RandomAugment(2, 9, isPIL=True,
+                              augs=['Identity', 'AutoContrast', 'Equalize', 'Brightness', 'Sharpness',
+                                    'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),
+                ToPILImage(),
+                RandomResizedCrop(224),
+                RandomHorizontalFlip(),
+                ToTensor(),
+                Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ])
+        else:
+            self.transform = Compose([
+                Resize(256),
+                CenterCrop(224),
+                ToTensor(),
+                Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ])
 
 
 

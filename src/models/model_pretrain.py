@@ -33,7 +33,7 @@ class TwoStreamModel(nn.Module):
 
         self.text_encoder = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=True)
 
-        self.video_encoder = swin(args.swin_pretrained_path)
+        #self.video_encoder = swin(args.swin_pretrained_path)
         self.video_proj_linear = nn.Linear(frame_embedding_size, bert_hidden_size)
 
         self.cross_layers = nn.ModuleList(
@@ -53,7 +53,7 @@ class TwoStreamModel(nn.Module):
 
         # 创建动量模型
         self.text_encoder_m = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=True)
-        self.video_encoder_m = swin(args.swin_pretrained_path)
+        #self.video_encoder_m = swin(args.swin_pretrained_path)
         self.video_proj_linear_m = nn.Linear(frame_embedding_size, bert_hidden_size)
 
         self.cross_layers_m = nn.ModuleList(
@@ -64,7 +64,7 @@ class TwoStreamModel(nn.Module):
         self.text_proj_m = nn.Linear(bert_hidden_size, embed_dim)
         self.mlm_head_m = BertOnlyMLMHead(bert_cfg)
 
-        self.model_pairs = [[self.video_encoder, self.video_encoder_m],
+        self.model_pairs = [#[self.video_encoder, self.video_encoder_m],
                             [self.video_proj_linear, self.video_proj_linear_m],
                             [self.video_proj, self.video_proj_m],
                             [self.text_encoder, self.text_encoder_m],
@@ -90,8 +90,14 @@ class TwoStreamModel(nn.Module):
             self.temp.clamp_(0.001, 0.5)
 
         # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
-        video_embeds_pre = self.video_encoder(video_feature)
-        video_embeds = self.video_proj_linear(video_embeds_pre)
+        # video_embeds_pre = self.video_encoder(video_feature)
+        video_embeds = self.video_proj_linear(video_feature)
+
+        # MLM
+        # MASK
+        input_ids, lm_label = self.lm.torch_mask_tokens(text_input_ids.cpu())
+        text_input_ids = input_ids.to(text_input_ids.device)
+        lm_label = lm_label[:, 1:].to(text_input_ids.device)
 
         text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
         # feat 768-> 256 映射到低维空间， 视频取mean_pooling, 文本取[cls]
@@ -102,7 +108,7 @@ class TwoStreamModel(nn.Module):
         with torch.no_grad():
             self._momentum_update()
             # video_embeds_m = self.video_encoder_m(video_feature)
-            video_embeds_m = self.video_proj_linear_m(video_embeds_pre)
+            video_embeds_m = self.video_proj_linear_m(video_feature)
 
             video_feat_m = F.normalize(self.video_proj_m(video_embeds_m.mean(1)), dim=-1)
             # 合并队列
@@ -190,19 +196,15 @@ class TwoStreamModel(nn.Module):
                                dim=0).to(video_feature.device)
         loss_itm = F.cross_entropy(vl_output, itm_labels)
 
-        # MLM
-        # MASK
-        input_ids, lm_label = self.lm.torch_mask_tokens(text_input_ids.cpu())
-        text_input_ids = input_ids.to(text_input_ids.device)
-        lm_label = lm_label[:, 1:].to(text_input_ids.device)
+
 
         # MASK后再过一遍模型, 实现MLM
-        text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
-        text_outputs = text_embeds
-        video_outputs = video_embeds
-        for layer_module in self.cross_layers:
-            text_outputs, video_outputs = layer_module(text_outputs, get_encoder_attention_mask(text_mask),
-                                                       video_outputs, get_encoder_attention_mask(video_mask))
+        # text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
+        # text_outputs = text_embeds
+        # video_outputs = video_embeds
+        # for layer_module in self.cross_layers:
+        #     text_outputs, video_outputs = layer_module(text_outputs, get_encoder_attention_mask(text_mask),
+        #                                                video_outputs, get_encoder_attention_mask(video_mask))
 
         lm_prediction_scores = self.mlm_head(text_outputs)[:, 1:text_input_ids.size()[1], :]
         loss_mlm = nn.CrossEntropyLoss()(lm_prediction_scores.contiguous().view(-1, self.vocab_size),

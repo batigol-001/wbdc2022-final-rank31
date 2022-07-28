@@ -217,10 +217,10 @@ def train_worker(rank, local_rank, device,args, config):
             else:
                 alpha =config['alpha'] * min(1, i / len(train_dataloader))
 
-            loss, (mlm_loss, itm_loss) = model(text_input_ids, text_mask, video_feature, video_mask, alpha)
+            loss, (mlm_loss, ita_loss, itm_loss) = model(text_input_ids, text_mask, video_feature, video_mask, alpha)
             reduced_loss = reduce_tensor(loss.data)
             reduced_mlm_loss = reduce_tensor(mlm_loss.data)
-            # reduced_ita_loss = reduce_tensor(ita_loss.data)
+            reduced_ita_loss = reduce_tensor(ita_loss.data)
             reduced_itm_loss = reduce_tensor(itm_loss.data)
 
             loss = loss / config["accum_step"]
@@ -233,7 +233,7 @@ def train_worker(rank, local_rank, device,args, config):
 
             print_loss += reduced_loss.cpu().item()
             print_mlm_loss += reduced_mlm_loss.cpu().item()
-            # print_ita_loss += reduced_ita_loss.cpu().item()
+            print_ita_loss += reduced_ita_loss.cpu().item()
             print_itm_loss += reduced_itm_loss.cpu().item()
             if rank == 0 and print_step % config["print_steps"] == 0:
                 lr = optimizer.param_groups[0]['lr']
@@ -268,7 +268,7 @@ def train_worker(rank, local_rank, device,args, config):
             args.logger.info(f"cost time: {time.time() - start_time}")
 
         dist.barrier()
-    torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
 
 
 def main():

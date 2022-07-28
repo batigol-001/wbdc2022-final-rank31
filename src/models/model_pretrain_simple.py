@@ -34,7 +34,7 @@ class TwoStreamModel(nn.Module):
         self.text_encoder = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=True)
         self.text_proj = nn.Linear(bert_hidden_size, embed_dim)
 
-        self.video_encoder = swin(args.swin_pretrained_path)
+        # self.video_encoder = swin(args.swin_pretrained_path)
         self.video_proj_linear = nn.Linear(frame_embedding_size, bert_hidden_size)
         self.video_proj = nn.Linear(bert_hidden_size, embed_dim)
 

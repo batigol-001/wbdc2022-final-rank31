@@ -166,5 +166,7 @@ val_batch_size = 256
   # version=37， swin-large ema+fgm 效果一般
   # version=38, pretrain4.0 加载epoch11, 6981, loss = 1.159
 
+  # pretrain 5.0 all
 
-# todo 分类头输入，cross-layers输出可以接 nextvld 提取桢之间关系
+  # version=39, 继续调参 warm_ratio = 0.05 基于V30， 线下6960 loss=1.180 buxing
+  # version=40, 随机增强
