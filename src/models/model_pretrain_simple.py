@@ -34,7 +34,7 @@ class TwoStreamModel(nn.Module):
         self.text_encoder = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=True)
         self.text_proj = nn.Linear(bert_hidden_size, embed_dim)
 
-        # self.video_encoder = swin(args.swin_pretrained_path)
+        self.video_encoder = swin(args.swin_pretrained_path)
         self.video_proj_linear = nn.Linear(frame_embedding_size, bert_hidden_size)
         self.video_proj = nn.Linear(bert_hidden_size, embed_dim)
 
@@ -43,7 +43,7 @@ class TwoStreamModel(nn.Module):
         )
 
         # 温度参数
-        self.temp = nn.Parameter(torch.ones([]) * temp)
+        # self.temp = nn.Parameter(torch.ones([]) * temp)
 
         self.mlm_head = BertOnlyMLMHead(bert_cfg)
 
@@ -52,8 +52,7 @@ class TwoStreamModel(nn.Module):
         self.lm = MaskLM(tokenizer_path=args.bert_dir)
 
         # 创建动量模型
-        self.text_encoder_m = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg,
-                                                        add_pooling_layer=True)
+        self.text_encoder_m = BertModel.from_pretrained(args.bert_dir, cache_dir=args.bert_cache, config=bert_cfg, add_pooling_layer=True)
         self.text_proj_m = nn.Linear(bert_hidden_size, embed_dim)
 
         self.video_proj_linear_m = nn.Linear(frame_embedding_size, bert_hidden_size)
@@ -78,8 +77,8 @@ class TwoStreamModel(nn.Module):
 
     def forward(self,  text_input_ids, text_mask, video_feature, video_mask, alpha=0):
 
-        with torch.no_grad():
-            self.temp.clamp_(0.001, 0.5)
+        # with torch.no_grad():
+        #     self.temp.clamp_(0.001, 0.5)
 
         # 输入抽过特征的
         # # 单模编码器, 输出video text embedding， [bs, 32, 768], [bs, 256, 768]
@@ -112,22 +111,17 @@ class TwoStreamModel(nn.Module):
             text_feat_m = F.normalize(self.text_proj_m(text_embeds_m.mean(1)), dim=-1)
             text_feat_all = torch.cat([text_feat_m.t(), self.text_queue.clone().detach()], dim=1)
 
-           # 计算相似度, 动量feat 与 正负样本， 负样本队列中的
-            sim_i2t_m = video_feat_m @ text_feat_all / self.temp
-            sim_t2i_m = text_feat_m @ video_feat_all / self.temp
-
-            sim_targets = torch.zeros(sim_i2t_m.size()).to(video_feature.device)
-            sim_targets.fill_diagonal_(1)
-
-            sim_i2t_targets = alpha * F.softmax(sim_i2t_m, dim=1) + (1 - alpha) * sim_targets
-            sim_t2i_targets = alpha * F.softmax(sim_t2i_m, dim=1) + (1 - alpha) * sim_targets
 
 
-        sim_i2t = video_feat @ text_feat_all / self.temp
-        sim_t2i = text_feat @ video_feat_all / self.temp
 
-        loss_i2t = -torch.sum(F.log_softmax(sim_i2t, dim=1) * sim_i2t_targets, dim=1).mean()
-        loss_t2i = -torch.sum(F.log_softmax(sim_t2i, dim=1) * sim_t2i_targets, dim=1).mean()
+        sim_i2t = video_feat @ text_feat_all
+        sim_t2i = text_feat @ video_feat_all
+
+        sim_targets = torch.zeros(sim_i2t.size()).to(video_feature.device)
+        sim_targets.fill_diagonal_(1)
+
+        loss_i2t = -torch.sum(F.log_softmax(sim_i2t, dim=1) * sim_targets, dim=1).mean()
+        loss_t2i = -torch.sum(F.log_softmax(sim_t2i, dim=1) * sim_targets, dim=1).mean()
 
         loss_ita = (loss_i2t + loss_t2i) / 2
 
@@ -192,7 +186,7 @@ class TwoStreamModel(nn.Module):
                                          lm_label.contiguous().view(-1))
 
         loss = (loss_mlm + loss_ita + loss_itm * 10)/3
-        return loss, (loss_mlm, loss_itm)
+        return loss, (loss_mlm, loss_ita, loss_itm)
 
 
     @torch.no_grad()
