@@ -86,7 +86,7 @@ def create_ddp_dataloaders(args, config, train_index, val_index):
 
     if train_index is not None and val_index is not None:
 
-        train_dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, train_index, is_augment=True)
+        train_dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, train_index)
         val_dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, val_index)
         if args.num_workers > 0:
             dataloader_class = partial(DataLoader, pin_memory=True, num_workers=args.num_workers, prefetch_factor=args.prefetch)
@@ -116,7 +116,7 @@ def create_ddp_dataloaders(args, config, train_index, val_index):
             # single-thread reading does not support prefetch_factor arg
             dataloader_class = partial(DataLoader, pin_memory=True, num_workers=0)
 
-        train_sampler = RandomSampler(train_dataset, generator=torch.Generator())
+        train_sampler = torch.utils.data.DistributedSampler(train_dataset, shuffle=True, seed=args.seed, drop_last=True)
         train_dataloader = dataloader_class(train_dataset,
                                             batch_size=config["train_batch_size"],
                                             sampler=train_sampler,
@@ -139,6 +139,8 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
 
 
     #  load data
+    # train_index = range(500)
+    # val_index = range(500)
     train_dataloader, val_dataloader = create_ddp_dataloaders(args, config, train_index, val_index)
 
     epochs = config["max_epochs"]
@@ -296,14 +298,14 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
                             model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
                             torch.save({"model_state_dict": model_save}, save_file)
                             args.logger.info(f"save mode to file {save_file}")
-            else:
-                # 全量保存最后一轮
-                if rank == 0 and epoch == 3 and print_step % 500 == 0:
-                    args.logger.info(f"全量训练无评估")
-                    model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
-                    save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_epoch_{epoch}_step_{print_step}.bin'
-                    torch.save({"model_state_dict": model_save}, save_file)
-                    args.logger.info(f"save mode to file {save_file}")
+            # else:
+            #     # 全量保存最后一轮
+            #     if rank == 0 and epoch == 3 and print_step % 500 == 0:
+            #         args.logger.info(f"全量训练无评估")
+            #         model_save = model.module.state_dict() if hasattr(model, 'module') else model.state_dict()
+            #         save_file = f'{args.savedmodel_path}/model_fold_{fold_idx}_epoch_{epoch}_step_{print_step}.bin'
+            #         torch.save({"model_state_dict": model_save}, save_file)
+            #         args.logger.info(f"save mode to file {save_file}")
 
             # 结束评估
             if args.use_ema:
@@ -345,14 +347,15 @@ def train_and_validate(rank, local_rank, device, args, config, train_index, val_
         if args.use_ema:
             ema.restore()
         dist.barrier()
+        torch.cuda.empty_cache()
         if rank == 0:
             args.logger.info(f"cost time: {time.time() - start_time}")
         # # todo
-        # if epoch == 3:
-        #     break
+        if epoch == 3:
+            break
 
     args.logger.info(f" train finished!..................")
-    torch.cuda.empty_cache()
+
 
 def main():
 
