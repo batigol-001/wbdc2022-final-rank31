@@ -26,7 +26,7 @@ def parse_args():
     parser.add_argument('--log_path', type=str, default=f'../log')
     parser.add_argument('--model_path', type=str, default=f'../models')
     # ========================== Swin ===================================
-    parser.add_argument('--swin_pretrained_path', type=str, default='../opensource_models/swin_tiny_patch4_window7_224.pth')
+    parser.add_argument('--swin_pretrained_path', type=str, default='../opensource_models/swin_large_patch4_window7_224.pth')
 
     # ========================== Title BERT =============================
     parser.add_argument('--bert_dir', type=str, default='../opensource_models/chinese-macbert-base')

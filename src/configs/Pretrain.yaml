@@ -27,7 +27,7 @@ weight_decay: 0.01
 adam_epsilon: 0.000001
 max_grad_norm: 5
 
-other_lr_layers: ["itm_head", "mlm_head", "video_encoder", "cross_layers", "vision_proj", "text_proj"]
+other_lr_layers: ["itm_head", "mlm_head", "mfm_head", "video_encoder", "cross_layers", "vision_proj", "text_proj"]
 
 
 

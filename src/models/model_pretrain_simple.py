@@ -112,19 +112,8 @@ class TwoStreamModel(nn.Module):
             text_feat_all = torch.cat([text_feat_m.t(), self.text_queue.clone().detach()], dim=1)
 
 
-
-
         sim_i2t = video_feat @ text_feat_all
         sim_t2i = text_feat @ video_feat_all
-
-        sim_targets = torch.zeros(sim_i2t.size()).to(video_feature.device)
-        sim_targets.fill_diagonal_(1)
-
-        loss_i2t = -torch.sum(F.log_softmax(sim_i2t, dim=1) * sim_targets, dim=1).mean()
-        loss_t2i = -torch.sum(F.log_softmax(sim_t2i, dim=1) * sim_targets, dim=1).mean()
-
-        loss_ita = (loss_i2t + loss_t2i) / 2
-
 
         with torch.no_grad():
             bs = video_feature.size(0)
@@ -185,8 +174,8 @@ class TwoStreamModel(nn.Module):
         loss_mlm = nn.CrossEntropyLoss()(lm_prediction_scores.contiguous().view(-1, self.vocab_size),
                                          lm_label.contiguous().view(-1))
 
-        loss = (loss_mlm + loss_ita + loss_itm * 10)/3
-        return loss, (loss_mlm, loss_ita, loss_itm)
+        loss = (loss_mlm + loss_itm * 10)/2
+        return loss, (loss_mlm, loss_itm)
 
 
     @torch.no_grad()

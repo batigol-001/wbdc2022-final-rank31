@@ -172,4 +172,9 @@ val_batch_size = 256
   # version=41 全量 FGM(32) + 预训练(36) 线上0.7015
 
 
-    # pretrain 5.0 同3.0，+itc
+    # pretrain 5.0 同3.0，+itc itc不收敛
+    # pretrain 5.0 QQ游览器  10轮 loss=1e-4 bs=128
+
+  # version=42 pretrain 5.0 对比v36
+
+  # pretrain 6.0 QQ游览器  10轮 loss=2e-4 bs=128

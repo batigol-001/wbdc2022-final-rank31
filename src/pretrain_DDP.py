@@ -199,7 +199,7 @@ def train_worker(rank, local_rank, device,args, config):
         print_loss = 0.0
         print_step = 0
         print_mlm_loss = 0.0
-        print_ita_loss = 0.0
+        # print_mfm_loss = 0.0
         print_itm_loss = 0.0
 
         train_dataloader.sampler.set_epoch(epoch)
@@ -217,10 +217,10 @@ def train_worker(rank, local_rank, device,args, config):
             else:
                 alpha =config['alpha'] * min(1, i / len(train_dataloader))
 
-            loss, (mlm_loss, ita_loss, itm_loss) = model(text_input_ids, text_mask, video_feature, video_mask, alpha)
+            loss, (mlm_loss, itm_loss) = model(text_input_ids, text_mask, video_feature, video_mask, alpha)
             reduced_loss = reduce_tensor(loss.data)
             reduced_mlm_loss = reduce_tensor(mlm_loss.data)
-            reduced_ita_loss = reduce_tensor(ita_loss.data)
+            # reduced_mfm_loss = reduce_tensor(mfm_loss.data)
             reduced_itm_loss = reduce_tensor(itm_loss.data)
 
             loss = loss / config["accum_step"]
@@ -233,12 +233,12 @@ def train_worker(rank, local_rank, device,args, config):
 
             print_loss += reduced_loss.cpu().item()
             print_mlm_loss += reduced_mlm_loss.cpu().item()
-            print_ita_loss += reduced_ita_loss.cpu().item()
+            # print_mfm_loss += reduced_mfm_loss.cpu().item()
             print_itm_loss += reduced_itm_loss.cpu().item()
             if rank == 0 and print_step % config["print_steps"] == 0:
                 lr = optimizer.param_groups[0]['lr']
                 args.logger.info(f"Epoch {epoch} step [{print_step} / {setps_per_epoch}] : train total loss {print_loss/print_step:.5f}, "
-                                 f"mlm_loss {print_mlm_loss/print_step:.5f}, ita_loss {print_ita_loss/print_step:.5f}, "
+                                 f"mlm_loss {print_mlm_loss/print_step:.5f},"
                                  f"itm_loss {print_itm_loss/print_step:.5f}.|| lr: {lr}.")
 
             if print_step % config["accum_step"] == 0:
@@ -250,7 +250,7 @@ def train_worker(rank, local_rank, device,args, config):
             lr = optimizer.param_groups[0]['lr']
             args.logger.info(
             f"Epoch {epoch} step [{print_step} / {setps_per_epoch}] : train total loss {print_loss / print_step:.5f}, "
-            f"mlm_loss {print_mlm_loss / print_step:.5f}, ita_loss {print_ita_loss / print_step:.5f}, "
+            f"mlm_loss {print_mlm_loss / print_step:.5f},"
             f"itm_loss {print_itm_loss / print_step:.5f}.|| lr: {lr} .")
 
 
