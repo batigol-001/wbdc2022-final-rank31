@@ -23,7 +23,7 @@ sudo docker build -t tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:
 sudo docker run -it tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:v1.0 /bin/bash
 
 
-sudo docker push tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:v17.0
+sudo docker push tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:v18.0
 
 
 

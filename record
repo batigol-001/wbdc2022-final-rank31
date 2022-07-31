@@ -175,6 +175,7 @@ val_batch_size = 256
     # pretrain 5.0 同3.0，+itc itc不收敛
     # pretrain 5.0 QQ游览器  10轮 loss=1e-4 bs=128
 
-  # version=42 pretrain 5.0 对比v36
+  # version=42 pretrain 5.0 对比v36， 线下7020 loss=1.150, 线上0.696524
 
   # pretrain 6.0 QQ游览器  10轮 loss=2e-4 bs=128
+    # version=43 pretrain 6.0 对比v42，
