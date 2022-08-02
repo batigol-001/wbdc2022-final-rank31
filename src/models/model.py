@@ -82,6 +82,7 @@ class TwoStreamModel(nn.Module):
         video_embeds_mean = video_embeds.mean(
             1)  # (video_embeds * video_mask.unsqueeze(-1)).sum(1) / video_mask.sum(1).unsqueeze(-1)
 
+
         text_outputs = text_embeds
         video_outputs = video_embeds
         for layer_module in self.cross_layers:
@@ -92,9 +93,12 @@ class TwoStreamModel(nn.Module):
             1)  # (text_outputs * text_mask.unsqueeze(-1)).sum(1) / text_mask.sum(1).unsqueeze(-1)
         video_outputs_mean = video_outputs.mean(
             1)  # (video_outputs * video_mask.unsqueeze(-1)).sum(1) / video_mask.sum(1).unsqueeze(-1)
-        text_feats = text_outputs_mean + text_embeds_mean
-        video_feats = video_outputs_mean + video_embeds_mean
-        concat_feats = torch.cat((text_feats, video_feats), dim=-1)
+
+
+        text_mean_feats = text_outputs_mean + text_embeds_mean
+        video_mean_feats = video_outputs_mean + video_embeds_mean
+
+        concat_feats = torch.cat((text_mean_feats, video_mean_feats), dim=-1)
 
         preds = self.cls_linear(concat_feats)
 
@@ -108,18 +112,16 @@ class TwoStreamModel(nn.Module):
                 # 动量编码器
                 with torch.no_grad():
                     self._momentum_update()
-                    video_embeds_m = self.video_encoder_m(video_feature)
-                    video_embeds_m = self.video_proj_linear_m(video_embeds_m)
-                    # text_embeds_m = self.text_encoder_m(input_ids=text_input_ids, attention_mask=text_mask)[
-                    #     "last_hidden_state"]
+                    # video_embeds_m = self.video_encoder_m(video_feature)
+                    # video_embeds_m = self.video_proj_linear_m(video_embeds_m)
+                    text_embeds_m = self.text_encoder_m(input_ids=text_input_ids, attention_mask=text_mask)[
+                        "last_hidden_state"]
 
-                    text_embeds_mean_m = text_embeds.mean(
-                        1)  # (text_embeds * text_mask.unsqueeze(-1)).sum(1) / text_mask.sum(1).unsqueeze(-1)
-                    video_embeds_mean_m = video_embeds_m.mean(
-                        1)  # (video_embeds * video_mask.unsqueeze(-1)).sum(1) / video_mask.sum(1).unsqueeze(-1)
+                    text_embeds_mean_m = text_embeds_m.mean(1)
+                    video_embeds_mean_m = video_embeds.mean(1)
 
-                    text_outputs_m = text_embeds
-                    video_outputs_m = video_embeds_m
+                    text_outputs_m = text_embeds_m
+                    video_outputs_m = video_embeds
 
                     for layer_module in self.cross_layers_m:
                         text_outputs_m, video_outputs_m = layer_module(text_outputs_m,
@@ -127,9 +129,9 @@ class TwoStreamModel(nn.Module):
                                                                        video_outputs_m,
                                                                        get_encoder_attention_mask(video_mask))
 
-                    text_feats_m = text_outputs_m.mean(1) + text_embeds_mean_m
-                    video_feats_m = video_outputs_m.mean(1) + video_embeds_mean_m
-                    concat_feats_m = torch.cat((text_feats_m, video_feats_m), dim=-1)
+                    text_mean_feats_m = text_outputs_m.mean(1) + text_embeds_mean_m
+                    video_mean_feats_m = video_outputs_m.mean(1) + video_embeds_mean_m
+                    concat_feats_m = torch.cat((text_mean_feats_m, video_mean_feats_m), dim=-1)
 
                     preds_m = self.cls_linear_m(concat_feats_m)
 
