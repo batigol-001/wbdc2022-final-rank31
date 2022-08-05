@@ -41,11 +41,11 @@ def parse_args():
     # ========================== tricks =============================
     parser.add_argument('--fp16', type=bool, default=False)
     parser.add_argument('--use_ema', type=bool, default=True)
-    parser.add_argument('--use_adv', type=int, default=0, help="0-not use, 1-fpm, 2-pdg")
+    parser.add_argument('--use_adv', type=int, default=2, help="0-not use, 1-fpm, 2-pdg")
     # ========================== 重新加载模型 =============================
     parser.add_argument('--resume', type=str, default=f'')
 
     # inference
-    parser.add_argument('--ckpt_file', type=str, default=f'../models/finetune/49.0/model_fold_0_epoch_3_step_6250.bin')
+    parser.add_argument('--ckpt_file', type=str, default=f'../models/finetune/1.0/model_fold_0_epoch_3_step_6250.bin')
     args = parser.parse_args()
     return args

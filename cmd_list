@@ -18,6 +18,9 @@ sudo docker login tione-wxdsj.tencentcloudcr.com --username 100026276478 --passw
 # build
 sudo docker build -t tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:v20.0 .
 
+sudo docker build -t tione-wxdsj.tencentcloudcr.com/team-100026276478/team-062:lastsubmit .
+
+sudo docker push  tione-wxdsj.tencentcloudcr.com/team-100026276478/team-062:lastsubmit
 
 线下验证：
 sudo docker run -it tione-wxdsj.tencentcloudcr.com/team-100026276478/challenge:v1.0 /bin/bash

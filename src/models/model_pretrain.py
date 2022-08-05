@@ -67,7 +67,6 @@ class TwoStreamModel(nn.Module):
         text_embeds = self.text_encoder(input_ids=text_input_ids, attention_mask=text_mask)["last_hidden_state"]
         # video_embeds = self.video_encoder(video_feature)
         # video_embeds = self.video_proj_linear(video_embeds)
-
         video_embeds = nn.Tanh()(self.video_proj_linear(video_feature))
         # 多模态融合, 参考LXMERT, cross_attention+self_attention+FFN
         text_outputs = text_embeds

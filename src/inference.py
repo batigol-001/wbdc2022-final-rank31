@@ -20,11 +20,11 @@ def inference():
 
 
     # 1. load data
-    # dataset = MultiModalDataset(args, config, args.test_annotation, args.test_zip_frames, data_index=None, test_mode=True)
+    dataset = MultiModalDataset(args, config, args.test_annotation, args.test_zip_frames, data_index=None, test_mode=True)
 
     # # test
-    data_index = range(25000)
-    dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, data_index=data_index, test_mode=True)
+    # data_index = range(25000)
+    # dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, data_index=data_index, test_mode=True)
 
     print("数据量:", len(dataset))
     batch_size = config["test_batch_size"]

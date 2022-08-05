@@ -175,7 +175,17 @@ val_batch_size = 256
     # pretrain 5.0 同3.0，+itc itc不收敛
     # pretrain 5.0 QQ游览器  10轮 loss=1e-4 bs=128
 
-  # version=42 pretrain 5.0 对比v36， 线下7020 loss=1.150, 线上0.696524
+  # version=42 pretrain 5.0 对比v36， 线下7020 loss=1.150, 线上0.696524（+0.5K)
 
   # pretrain 6.0 QQ游览器  10轮 loss=2e-4 bs=128
-    # version=43 pretrain 6.0 对比v42，
+    # version=43 pretrain 6.0 对比v42， 线下 6965 loss=1.152 不理想
+    # verison=44,  pretrain 7.0 QQ游览器  20轮 loss=1e-4 bs=128    同43, 第一epoch提升，第二三下降
+
+  # version=47 pretrain 5.0 + FGM数据, 线下7001, loss=1.122
+  # 最优模型, 14桢, version=48，对比 v42，线下7012, loss=1.139, 线上6980(+1.5k)
+
+  # version=49.0 最终 14桢+FGM+全量 线上0.7026
+  # version=50.0 最终 14桢+全量 线上0.7026
+
+  # version=2.0 loss 2e-5,5e-5， loss=1.122， 7007 对比 48
+   在加载 pretrain7.0

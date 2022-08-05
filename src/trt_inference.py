@@ -1,105 +1,88 @@
-import torch
 import time
-import logging
-import numpy as np
-import tensorrt as trt
-import pycuda.autoinit
-import pycuda.driver as cuda
-
+import os
+import sys
+project_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))#print(path)
+sys.path.append(project_path)
+#import ruamel_yaml as yaml
+import yaml
+import torch
 from torch.utils.data import SequentialSampler, DataLoader
-
-from config import parse_args
-from data_helper import MultiModalDataset
-from category_id_map import lv2id_to_category_id
-
-logger = logging.getLogger(__name__)
-DEFAULT_MAX_WORKSPACE_SIZE = 1 << 30
-
-
-class HostDeviceMem(object):
-    def __init__(self, host_mem, device_mem, binding_name, shape=None):
-        self.host = host_mem
-        self.device = device_mem
-        self.binding_name = binding_name
-        self.shape = shape
-
-
-def allocate_buffers(engine):
-    inputs = []
-    outputs = []
-    bindings = []
-    stream = cuda.Stream()
-    for binding in engine:
-        size = trt.volume(engine.get_binding_shape(binding))
-        dtype = trt.nptype(engine.get_binding_dtype(binding))
-        host_mem = cuda.pagelocked_empty(size, dtype)
-        device_mem = cuda.mem_alloc(host_mem.nbytes)
-        bindings.append(int(device_mem))
-        if engine.binding_is_input(binding):
-            inputs.append(HostDeviceMem(host_mem, device_mem, binding))
-        else:
-            output_shape = engine.get_binding_shape(binding)
-            if len(output_shape) == 3:
-                dims = trt.DimsCHW(engine.get_binding_shape(binding))
-                output_shape = (dims.c, dims.h, dims.w)
-            elif len(output_shape) == 2:
-                dims = trt.Dims2(output_shape)
-                output_shape = (dims[0], dims[1])
-            outputs.append(HostDeviceMem(host_mem, device_mem, binding, output_shape))
-
-    return inputs, outputs, bindings, stream
-
-
-def do_inference(batch, context, bindings, inputs, outputs, stream):
-    assert len(inputs) == 3
-    inputs[0].host = np.ascontiguousarray(batch['frame_input'], dtype=np.float32)
-    inputs[1].host = np.ascontiguousarray(batch['title_input'], dtype=np.int32)
-    inputs[2].host = np.ascontiguousarray(batch['title_mask'], dtype=np.int32)
-    [cuda.memcpy_htod_async(inp.device, inp.host, stream) for inp in inputs]
-    context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
-    [cuda.memcpy_dtoh_async(out.host, out.device, stream) for out in outputs]
-    stream.synchronize()
-
-    outputs_dict = {}
-    for out in outputs:
-        outputs_dict[out.binding_name] = np.reshape(out.host, out.shape)
-    return outputs_dict
-
-
-def load_tensorrt_engine(filename):
-    TRT_LOGGER = trt.Logger(trt.Logger.INFO)
-    with open(filename, 'rb') as f, trt.Runtime(TRT_LOGGER) as runtime:
-        engine = runtime.deserialize_cuda_engine(f.read())
-    return engine
-
+from configs.config import parse_args
+from dataset.data_helper import MultiModalDataset
+from utlils.category_id_map import lv2id_to_category_id
+from models.model import TwoStreamModel
+from torch2trt import torch2trt
 
 def inference():
+    print("cuda: ", torch.cuda.is_available())
     args = parse_args()
+    config = yaml.load(open("configs/Finetune.yaml", 'r'), Loader=yaml.Loader)
+
 
     # 1. load data
-    dataset = MultiModalDataset(args, args.test_annotation, args.test_zip_frames, test_mode=True)
+    # dataset = MultiModalDataset(args, config, args.test_annotation, args.test_zip_frames, data_index=None, test_mode=True)
+
+    # # test
+    data_index = range(25000)
+    dataset = MultiModalDataset(args, config, args.train_annotation, args.train_zip_frames, data_index=data_index, test_mode=True)
+
+    print("数据量:", len(dataset))
+    batch_size = config["test_batch_size"]
+    print("batch_size", batch_size)
     sampler = SequentialSampler(dataset)
     dataloader = DataLoader(dataset,
-                            batch_size=10,
+                            batch_size=batch_size,
                             sampler=sampler,
                             drop_last=False,
-                            pin_memory=False,
-                            num_workers=args.num_workers,
-                            prefetch_factor=args.prefetch)
+                            pin_memory=True,
+                            prefetch_factor=8,
+                            num_workers=4)
 
     # 2. load model
-    predictions = []
-    with load_tensorrt_engine('model.trt.engine') as engine:
-        inputs, outputs, bindings, stream = allocate_buffers(engine)
-        with engine.create_execution_context() as context:
-            for data in dataloader:
-                batch = {k: v.numpy() for k, v in data.items()}
-                outputs_dict = do_inference(batch, context, bindings, inputs, outputs, stream)
-                predictions.extend(np.argmax(outputs_dict['output_0'], axis=1))
+    ckpt_file = args.ckpt_file
+    print(f"model_name:{ckpt_file}")
+    model = TwoStreamModel(args, config)
+    checkpoint = torch.load(ckpt_file, map_location='cpu')
+    model.load_state_dict(checkpoint['model_state_dict'])
 
-    # 3. dump results
+    model = torch.nn.parallel.DataParallel(model.cuda())
+    model.eval()
+
+    text_input_ids = torch.ones((1, args.bert_seq_lenght), dtype=torch.int32).cuda()
+    text_mask = torch.ones((1, args.bert_seq_lenght), dtype=torch.int32).cuda()
+    video_feature = torch.randn((1, config["max_frames"], 3, 224, 224), dtype=torch.float32).cuda()
+    video_mask = torch.ones((1, config["max_frames"]),  dtype=torch.int32).cuda()
+
+    input_data = (text_input_ids, text_mask, video_feature, video_mask)
+
+    ## convert to TensorRT int8 model
+    model_trt_int8 = torch2trt(model, input_data, max_batch_size=batch_size, fp16_model=True)
+
+
+    # 3. inference
+    predictions = []
+    s_time = time.time()
+    with torch.no_grad():
+        for batch in dataloader:
+            text_input_ids = batch['text_input_ids'].int().cuda()
+            text_mask = batch['text_attention_mask'].int().cuda()
+            video_feature = batch["frame_input"].half().cuda()
+            video_mask = batch['frame_mask'].int().cuda()
+
+
+            pred_label_id = torch.argmax(model_trt_int8(text_input_ids, text_mask, video_feature, video_mask), 1)
+            predictions.extend(pred_label_id.cpu().numpy())
+    print(time.time() - s_time)
+    # 4. dump results
     with open(args.test_output_csv, 'w') as f:
         for pred_label_id, ann in zip(predictions, dataset.anns):
             video_id = ann['id']
             category_id = lv2id_to_category_id(pred_label_id)
             f.write(f'{video_id},{category_id}\n')
+
+
+
+if __name__ == '__main__':
+    s_time = time.time()
+    inference()
+    print("cost time:",time.time() - s_time)
